@@ -4,7 +4,7 @@
     "type": "project",
     "license": "MIT",
     "require": {
-        "iam-adty/empira-principle": "@dev"
+        "iam-adty/empira-principle": "dev-main"
     },
     "require-dev": {
         "franzl/studio": "^0.16",

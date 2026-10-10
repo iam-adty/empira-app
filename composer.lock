@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d9d93ee56aeb7c08b9f2c5ed47e1ebf9",
+    "content-hash": "513e73b5b04a903623e7e92297ece0b6",
     "packages": [
         {
             "name": "iam-adty/empira-principle",
@@ -12,7 +12,7 @@
             "dist": {
                 "type": "path",
                 "url": "../principle",
-                "reference": "456b96070ebdde7f9c2b0b7571e753f3a4b0b519"
+                "reference": "de0feadf106e49172c6d56c1c3e661f9d16fd8f4"
             },
             "require": {
                 "php": "^8.4"
