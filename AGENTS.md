@@ -30,7 +30,7 @@ app/
 ├── bootstrap/app.php  what `bin/empira` boots to find this app's commands
 ├── public/index.php   front controller *and* worker script
 ├── src/
-│   ├── App.php        wiring: registry, database, auth, routes
+│   ├── App.php        wiring: registry, ORM, auth, routes
 │   ├── Css.php        the global stylesheet
 │   ├── Auth/          UserRepository — registration
 │   ├── Console/       Seed — a command this app supplies
@@ -189,8 +189,15 @@ else, where the route is not a page and should not pretend to be one.
 
 ## The database
 
-`App::boot()` calls `$app->database()` and reads `DB_*` from the environment,
+`App::boot()` calls `$app->orm()` and reads `DB_*` from the environment,
 defaulting to a SQLite file in `storage/`, so `composer serve` needs no services.
+
+`publishDatabaseDefaults()` runs first and writes this application's defaults
+into `$_ENV` before anything else reads them. There were once two readers with
+two sets of defaults — the runtime wanted `storage/app.sqlite`, the migration
+command read the same variables through the framework and got `:memory:` — and
+`composer setup` migrated a database that vanished on exit and then seeded a
+real one with no `users` table in it.
 
 Migrating and seeding are **deploy steps**, not boot:
 

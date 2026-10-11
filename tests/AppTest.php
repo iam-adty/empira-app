@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\App;
 use App\Auth\UserRepository;
 use IamAdty\Empira\Application;
+use IamAdty\Empira\Auth\User;
 use IamAdty\Empira\Config\DatabaseConfig;
 use IamAdty\Empira\Console;
 use IamAdty\Empira\Http\Request;
@@ -384,9 +385,9 @@ final class AppTest extends TestCase
         $this->assertSame(200, $response->status());
         $this->assertSame('/dashboard', $response->headers()['HX-Redirect'] ?? null);
 
-        $row = $app->db()->first('users', fn($q) => $q->where('email', $email));
-        $this->assertNotNull($row, 'the account was written');
-        $this->assertSame('Grace Hopper', $row['name']);
+        $user = $this->findUser($app, $email);
+        $this->assertNotNull($user, 'the account was written');
+        $this->assertSame('Grace Hopper', $user->name());
 
         // …and the new account is immediately the signed-in one.
         $this->assertStringContainsString('Grace Hopper', $this->get($app, '/dashboard')->body());
@@ -681,9 +682,22 @@ final class AppTest extends TestCase
         ]);
     }
 
+    /**
+     * A user straight from the ORM, bypassing the request that made it.
+     *
+     * The EntityManager is cleared at the start of every request, so reading
+     * through the application's own manager after a response would test the
+     * identity map rather than the database. A fresh manager per lookup reads
+     * what is actually there.
+     */
+    private function findUser(Application $app, string $email): ?User
+    {
+        return $app->container()->get(UserRepository::class)->byEmail($email);
+    }
+
     private function countUsers(Application $app, string $email): int
     {
-        return count($app->db()->select('users', fn($q) => $q->where('email', $email)));
+        return $this->findUser($app, $email) === null ? 0 : 1;
     }
 
     /**

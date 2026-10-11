@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Auth;
 
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\EntityUniqueConstraintViolationException;
 use IamAdty\Empira\Auth\DoctrineUserProvider;
 use IamAdty\Empira\Auth\User;
 
@@ -62,7 +62,13 @@ final class UserRepository
         try {
             $this->entities->persist($user);
             $this->entities->flush();
-        } catch (EntityUniqueConstraintViolationException) {
+        } catch (UniqueConstraintViolationException) {
+            // DBAL's exception, not the ORM's. There is no
+            // `EntityUniqueConstraintViolationException` in ORM 3 — a `catch`
+            // naming a class that does not exist compiles fine and silently
+            // never matches, so this race would have become a 500 rather than a
+            // readable message, and only under concurrency, which is the worst
+            // time to find out.
             throw new DuplicateEmail();
         }
 

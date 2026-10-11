@@ -57,7 +57,6 @@ final class App
         // per worker thread, and a boot that migrates is a boot that has eleven
         // threads racing each other through the same migration.
         self::publishDatabaseDefaults();
-        $app->database(self::databaseConfig());
 
         // The ORM, mapped over `src/` — this application's entities, plus the
         // framework's own `Auth` ones, which `orm()` always includes so that

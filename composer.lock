@@ -864,7 +864,7 @@
             "dist": {
                 "type": "path",
                 "url": "../principle",
-                "reference": "0430b3271bbcf998ba932cbf098faaf6b02c1d3d"
+                "reference": "e90aed5b17b387c8d4dc44f59f8a27f7c8a0c6aa"
             },
             "require": {
                 "doctrine/dbal": "^4.3",
