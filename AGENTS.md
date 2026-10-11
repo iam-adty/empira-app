@@ -22,11 +22,11 @@ app/
 ├── composer.json      requires iam-adty/empira-principle at dev-main
 ├── phpunit.xml
 ├── studio.json        links ../principle through franzl/studio
-├── routes.php         every route the app answers
 ├── public/index.php   the only file the web server runs
 ├── src/
 │   ├── App.php        wiring: registry, routes, error pages
-│   ├── Layout.php     the document and its regions
+│   ├── Pages/         HomeLayout — the document, its URL, its regions
+│   ├── Routing/       AppRoutes — routes that are not pages
 │   ├── Css.php        the stylesheet
 │   └── Components/    Counter, TodoList, SearchBox
 └── tests/AppTest.php  the app, end to end
@@ -102,11 +102,16 @@ If you changed the framework, test both repos — this app is the integration te
 cd ../principle && composer test
 ```
 
-## Known gap
+## How routes are declared
 
-`routes.php` lives at the project root rather than in `src/`. Attribute-based
-routing, which would let a layout declare its own URL and delete that file, is
-planned in [`../principle/docs/planned-routing.md`](../principle/docs/planned-routing.md).
+There is no `routes.php`. A page declares its own URL with `#[Route]` on the
+layout class, and `App::boot()` calls `$app->discover(__DIR__, __NAMESPACE__)`.
+Routes that are not pages — no layout, no markup — go in
+`src/Routing/AppRoutes.php`, a `RouteRegistrar` passed to `$app->registrar()`.
+
+**Both mechanisms exist on purpose.** Discovery is for pages, where the URL and
+the thing that draws it belong in one file; the registrar is for everything
+else, where the route is not a page and should not pretend to be one.
 
 ## `APP_SECRET`
 

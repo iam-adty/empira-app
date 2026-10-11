@@ -35,24 +35,33 @@ to the signed endpoints its own markup advertises.
 app/
 ├── composer.json
 ├── phpunit.xml
-├── routes.php            every route the app answers
 ├── public/index.php      the only file the web server runs
 ├── src/
 │   ├── App.php           wiring: registry, routes, error pages
-│   ├── Layout.php        the document, and its regions
 │   ├── Css.php           the stylesheet
+│   ├── Pages/            HomeLayout — the document, its URL and its regions
+│   ├── Routing/          AppRoutes — routes that are not pages
 │   └── Components/       Counter, TodoList, SearchBox
 └── tests/AppTest.php     the app, end to end
 ```
 
 ## How a page is put together
 
-A page is a route pointing at a layout:
+A page declares its own URL, on the class that draws it:
 
 ```php
-// routes.php
-$routes->get('/', fn(Request $request, Application $app) => $app->view(Layout::class), 'home');
-```
+// src/Pages/HomeLayout.php
+#[Route('/', name: 'home')]
+final class HomeLayout extends BaseLayout
+{
+    public function mount(Request $request): void
+    {
+        $this->q = is_string($request->query['q'] ?? null) ? $request->query['q'] : '';
+    }
+}```
+
+`App::boot()` discovers it. Routes that are not pages — a health check, say —
+are registered explicitly in `src/Routing/AppRoutes.php`.
 
 The layout declares **regions**, and each region is one card htmx can swap on its
 own:
