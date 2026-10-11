@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Auth\DemoGuard;
 use App\Components\Counter;
 use App\Components\SearchBox;
 use App\Components\TodoList;
 use IamAdty\Empira\Application;
+use IamAdty\Empira\Auth\DatabaseUserProvider;
 use IamAdty\Empira\Config\Env;
+use IamAdty\Empira\Data\Migrator;
 use IamAdty\Empira\Security\Csrf;
 use IamAdty\Empira\State\SessionState;
 use IamAdty\Empira\State\StateStore;
@@ -39,6 +42,18 @@ final class App
             ->alias('todos', TodoList::class)
             ->alias('search', SearchBox::class);
 
+        // A SQLite file by default, so `composer serve` needs no services. The
+        // Docker compose overrides these through the environment.
+        $app->database(self::databaseConfig());
+
+        // Migrate and seed on boot, which is a demo convenience and not a thing
+        // to copy: a real application migrates as a deploy step.
+        self::prepareDatabase($app);
+
+        // Who is asking. DemoGuard is emphatically not authentication — see
+        // its docblock. A real application swaps it for a SessionGuard.
+        $app->auth(new DemoGuard($app->db()));
+
         // Routes that are not pages: no layout, registered deliberately.
         $app->registrar(Routing\AppRoutes::class);
 
@@ -55,6 +70,60 @@ final class App
         ));
 
         return $app;
+    }
+
+    /**
+     * Database settings, from the environment when there is one.
+     *
+     * @return array<string, mixed>
+     */
+    private static function databaseConfig(): array
+    {
+        $driver = $_ENV['DB_DRIVER'] ?? 'sqlite';
+
+        return [
+            'driver' => $driver,
+            'database' => $_ENV['DB_DATABASE'] ?? dirname(__DIR__) . '/storage/app.sqlite',
+            'host' => $_ENV['DB_HOST'] ?? 'db',
+            'port' => (int) ($_ENV['DB_PORT'] ?? 0),
+            'username' => $_ENV['DB_USERNAME'] ?? '',
+            'password' => $_ENV['DB_PASSWORD'] ?? '',
+        ];
+    }
+
+    /**
+     * Apply migrations, then put one user in so the demo has somebody to be.
+     *
+     * The seeder is idempotent: booting twice must not fail on a unique index.
+     */
+    private static function prepareDatabase(Application $app): void
+    {
+        $connection = $app->db()->connection();
+
+        // Asked of the connection rather than re-read from the environment:
+        // `$_ENV['DB_DRIVER'] ?? 'sqlite' === 'sqlite'` binds as
+        // `$_ENV['DB_DRIVER'] ?? true`, so the SQLite branch would have run —
+        // and issued a SQLite-only PRAGMA — against PostgreSQL.
+        if ($connection->grammar()->driver() === 'sqlite') {
+            $file = (string) ($connection->fetchOne('PRAGMA database_list')['file'] ?? '');
+            $directory = dirname($file);
+
+            if ($file !== '' && !is_dir($directory)) {
+                mkdir($directory, 0o777, true);
+            }
+        }
+
+        (new Migrator($connection, dirname(__DIR__) . '/migrations'))->run();
+
+        $users = new DatabaseUserProvider($app->db());
+
+        if ($users->byCredential('ada@example.com') === null) {
+            $app->db()->insert('users', [
+                'email' => 'ada@example.com',
+                'name' => 'Ada Lovelace',
+                'password_hash' => $users->hash('correct horse battery staple'),
+            ]);
+        }
     }
 
     /**

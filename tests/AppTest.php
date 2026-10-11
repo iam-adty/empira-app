@@ -116,6 +116,53 @@ final class AppTest extends TestCase
         $this->assertSame('{"ok":true}', $response->body());
     }
 
+    public function testTheApplicationRunsMigrationsAndSeedsAUser(): void
+    {
+        [$app] = $this->app();
+
+        // Boot migrates and seeds, so the demo has somebody to sign in as
+        // without a setup step a reader has to discover.
+        $this->assertTrue($app->db()->table('users')->exists());
+        $this->assertSame('Ada Lovelace', $app->db()->first('users')['name']);
+    }
+
+    public function testAnAdminRouteRefusesAnAnonymousVisitor(): void
+    {
+        [$app] = $this->app();
+
+        // Behind RequireAuth, so the answer is the negotiated 401 rather than
+        // the 404 an unregistered route would give.
+        $this->assertSame(401, $app->handle(new Request('GET', '/admin/stats'))->status());
+    }
+
+    public function testAnAdminRouteRendersForAVerifiedVisitor(): void
+    {
+        [$app] = $this->app();
+
+        $body = $app->handle(new Request('GET', '/admin/stats', query: ['as' => '1']))->body();
+
+        // Assert on the identity itself, not on the word "admin", which the
+        // page says either way.
+        $this->assertStringContainsString('Signed in as Ada Lovelace', $body);
+    }
+
+    public function testAnUnknownUserIsStillRefused(): void
+    {
+        [$app] = $this->app();
+
+        $this->assertSame(401, $app->handle(new Request('GET', '/admin/stats', query: ['as' => '999']))->status());
+    }
+
+    public function testTheAdminRouteNegotiatesJsonForAJsonClient(): void
+    {
+        [$app] = $this->app();
+
+        $response = $app->handle(new Request('GET', '/admin/stats', headers: ['Accept' => 'application/json']));
+
+        $this->assertSame(401, $response->status());
+        $this->assertStringContainsString('"error"', $response->body());
+    }
+
     public function testUnknownRoutes404(): void
     {
         [$app] = $this->app();
