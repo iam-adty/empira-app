@@ -126,9 +126,13 @@ docker compose up -d --wait         # PostgreSQL behind FrankenPHP, worker mode
 ```
 
 The compose app runs in **worker mode** — the application boots once and serves
-many requests from memory. `APP_RUNTIME=classic` runs the front controller afresh
-per request instead, and `FRANKENPHP_WORKERS=1` forces a single worker, which is
-how you check that nothing is carrying over between requests.
+many requests from memory. It starts **2 × CPU** workers, FrankenPHP's default.
+
+`APP_RUNTIME=classic` runs the front controller afresh per request instead.
+`FRANKENPHP_WORKERS=1` forces a single worker, which is a **diagnostic rather
+than a setting**: at 2 × CPU a state leak only shows itself about one request in
+32, so when something is carrying over between requests, drop to one worker and
+the symptom appears immediately.
 
 **You only need to build once.** `app/src` and `principle/src` are bind-mounted
 into the container and the worker watches both, so an edit is an edit in the

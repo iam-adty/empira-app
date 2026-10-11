@@ -190,11 +190,13 @@ composer serve                      # SQLite, PHP's built-in server
 docker compose up --build           # PostgreSQL behind FrankenPHP
 ```
 
-The compose app runs in **worker mode**: one boot, many requests per process.
-`APP_RUNTIME=classic` drops back to a fresh runtime per request, which is the
-comparison to make when something behaves differently. `FRANKENPHP_WORKERS=1`
-forces a single worker — which is how you check that state is not carrying
-between requests, because then every request is guaranteed the same process.
+The compose app runs in **worker mode**: one boot, many requests per process,
+across **2 × CPU** workers by default. `APP_RUNTIME=classic` drops back to a fresh
+runtime per request, which is the comparison to make when something behaves
+differently. `FRANKENPHP_WORKERS=1` forces a single worker — a diagnostic, not a
+setting. It matters because at 2 × CPU a state leak only surfaces when two
+consecutive requests land on the same worker, about one time in 32, so it hides
+from you exactly when you are looking for it.
 
 ## `APP_SECRET`
 
