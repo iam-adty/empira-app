@@ -25,7 +25,8 @@ app/
 ├── public/index.php   the only file the web server runs
 ├── src/
 │   ├── App.php        wiring: registry, routes, error pages
-│   ├── Pages/         HomeLayout — the document, its URL, its regions
+│   ├── Auth/          DemoGuard — **not authentication**, see below
+│   ├── Pages/         HomeLayout, AdminLayout — a page and its URL
 │   ├── Routing/       AppRoutes — routes that are not pages
 │   ├── Css.php        the stylesheet
 │   └── Components/    Counter, TodoList, SearchBox
@@ -112,6 +113,25 @@ Routes that are not pages — no layout, no markup — go in
 **Both mechanisms exist on purpose.** Discovery is for pages, where the URL and
 the thing that draws it belong in one file; the registrar is for everything
 else, where the route is not a page and should not pretend to be one.
+
+## The database, and the guard that is not authentication
+
+`App::boot()` calls `$app->database()`, migrates, and seeds one user. It uses
+`DB_*` from the environment, defaulting to a SQLite file in `storage/`, so
+`composer serve` needs no services.
+
+`src/Auth/DemoGuard.php` signs in **whoever names a user id in a query string**.
+That is fine for a demonstration and catastrophic anywhere else. It exists so the
+wiring — `$app->auth()`, `RequireAuth`, the guard resolving a `User` — can be
+seen working without inventing a login. There is no password in this app for
+exactly that reason. **Replace it before copying anything here.**
+
+## Running it
+
+```bash
+composer serve                      # SQLite, PHP's built-in server
+docker compose up --build           # PostgreSQL behind nginx and php-fpm
+```
 
 ## `APP_SECRET`
 
