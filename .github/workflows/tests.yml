@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The application depends on `iam-adty/empira-principle: dev-main`,
+      # which is a Composer *path* package and is not published anywhere. CI
+      # therefore has to put the framework next to the application, exactly
+      # where `studio.json` expects to find it.
+      - uses: actions/checkout@v4
+        with:
+          repository: iam-adty/empira-principle
+          path: ../principle
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Run the test suite
+        run: composer test
