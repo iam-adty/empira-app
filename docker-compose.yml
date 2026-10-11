@@ -58,9 +58,17 @@ services:
       # before it has finished starting.
       start_period: 20s
     environment:
-      APP_ENV: local
-      # Generate a real one for anything that is not a demo.
-      APP_SECRET: dev-secret-change-me-please-32b
+      # `local` by default, because this file is the local demo stack. Both are
+      # overridable from the environment — and Compose reads `app/.env` for
+      # substitution, so a generated secret there flows through untouched.
+      #
+      # `APP_ENV` is the flag that matters: set it to anything else and
+      # `App::boot()` refuses to start on the placeholder rather than serving
+      # component URLs anybody can forge.
+      #
+      #     APP_ENV=production APP_SECRET=$(openssl rand -hex 32) docker compose up -d
+      APP_ENV: "${APP_ENV:-local}"
+      APP_SECRET: "${APP_SECRET:-dev-secret-change-me-please-32b}"
       DB_DRIVER: pgsql
       DB_HOST: db
       DB_PORT: "5432"

@@ -28,12 +28,19 @@ use Psr\Log\LoggerInterface;
  */
 final class App
 {
+    /**
+     * The demo secret, and the only value this application will start on
+     * outside a local environment.
+     *
+     * It is public because it has to be recognisable, not secret — anyone can
+     * read it here, which is exactly why {@see boot()} refuses it in production.
+     */
     public const SECRET = 'dev-secret-change-me-please-32b';
 
     public static function boot(?StateStore $state = null, bool $csrf = true): Application
     {
         $app = new Application(
-            secret: $_ENV['APP_SECRET'] ?? self::SECRET,
+            secret: self::secret(),
             state: $state ?? new SessionState(),
             csrf: $csrf ? new Csrf() : null,
         );
@@ -142,6 +149,57 @@ final class App
      * should not be able to stop a deploy. An unrecognised level logs
      * everything instead: too much beats not starting.
      */
+    /**
+     * The token secret, refusing to run on the placeholder in production.
+     *
+     * The failure this guards against is silent, which is what makes it worth a
+     * boot check rather than a log line. A component token is
+     * `base64url(payload).base64url(hmac)` and the payload carries the component
+     * class and its props — so with the secret in the open, anyone can mint a
+     * signed URL for any component carrying any props they like. Nothing
+     * 500s, nothing is written to any log, and the forged URL simply works.
+     *
+     * Refusing to start is the only honest signal left.
+     *
+     * **This is opt-in, deliberately.** An unset `APP_ENV` counts as local, so
+     * the guard fires when someone sets `APP_ENV=production` and forgets the
+     * secret — not when they set neither. That is the same bargain Laravel and
+     * Symfony make, and it is worth being plain about what it does not catch: a
+     * deployment that configures nothing at all still starts on the
+     * placeholder. `docker-compose.yml` therefore takes `APP_ENV` from the
+     * environment, so the one flag that turns this on is easy to set.
+     *
+     * @throws \RuntimeException when the placeholder would be used in production
+     */
+    private static function secret(): string
+    {
+        $secret = (string) ($_ENV['APP_SECRET'] ?? self::SECRET);
+
+        if ($secret !== self::SECRET || self::isLocal()) {
+            return $secret;
+        }
+
+        throw new \RuntimeException(sprintf(
+            'Refusing to start with the placeholder APP_SECRET outside a local environment. '
+            . 'Generate one with: php -r \'echo bin2hex(random_bytes(32)), PHP_EOL;\' and set it in '
+            . 'APP_SECRET. It must be at least 16 bytes, and it must not change between deploys — '
+            . 'changing it invalidates every component link already in a user\'s history.'
+        ));
+    }
+
+    /**
+     * Whether this is a development machine.
+     *
+     * Local **unless told otherwise**: unset is not a claim to be anything in
+     * particular, and refusing to start a developer's first run over a variable
+     * they have never heard of would be a worse failure than the one being
+     * guarded against.
+     */
+    private static function isLocal(): bool
+    {
+        return ($_ENV['APP_ENV'] ?? 'local') === 'local';
+    }
+
     private static function logLevel(): Level
     {
         try {

@@ -194,6 +194,49 @@ final class AppTest extends TestCase
         $this->assertStringNotContainsString('Your account', $body);
     }
 
+    public function testThePlaceholderSecretIsFineWhenNothingSaysOtherwise(): void
+    {
+        // Pinned because it is a decision, not an accident: an unset APP_ENV
+        // counts as local. Someone tidying this up into "unset means not local"
+        // would break every developer's first run — and would be trading one
+        // silent failure for a different one.
+        unset($_ENV['APP_ENV'], $_ENV['APP_SECRET']);
+
+        $this->assertNotNull(App::boot(csrf: false));
+    }
+
+    public function testThePlaceholderSecretRefusesToStartOutsideLocal(): void
+    {
+        unset($_ENV['APP_SECRET']);
+        $_ENV['APP_ENV'] = 'production';
+
+        try {
+            // A component token is base64url(payload).base64url(hmac) and the
+            // payload carries the component class and its props, so the
+            // placeholder in the open means anyone can mint a signed URL for
+            // any component with any props. Nothing would have logged this, and
+            // the forged URL would simply have worked.
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Refusing to start with the placeholder APP_SECRET');
+
+            App::boot(csrf: false);
+        } finally {
+            unset($_ENV['APP_ENV']);
+        }
+    }
+
+    public function testARealSecretIsAcceptedOutsideLocal(): void
+    {
+        $_ENV['APP_ENV'] = 'production';
+        $_ENV['APP_SECRET'] = bin2hex(random_bytes(32));
+
+        try {
+            $this->assertNotNull(App::boot(csrf: false));
+        } finally {
+            unset($_ENV['APP_ENV'], $_ENV['APP_SECRET']);
+        }
+    }
+
     public function testTheApplicationAndTheConsoleAgreeOnWhichDatabaseThisIs(): void
     {
         // The bug this pins: `App::boot()` defaulted to storage/app.sqlite while

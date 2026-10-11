@@ -9,7 +9,7 @@ wire this up?" has an answer you can read in one sitting.
 ## Commands
 
 ```bash
-composer test                       # 27 tests, 85 assertions
+composer test                       # 30 tests, 89 assertions
 composer serve                      # http://localhost:8000
 vendor/bin/empira migrate           # the schema, before anything serves
 vendor/bin/empira seed              # the demo account
@@ -249,3 +249,26 @@ php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
 
 It must be at least 16 bytes, and it must not change between deploys — changing
 it invalidates every component link already sitting in a user's history.
+
+`App::boot()` **refuses to start** on the placeholder unless the environment is
+local. The failure this guards against is silent, which is why it is a boot
+check rather than a log line: a component token is
+`base64url(payload).base64url(hmac)` and the payload carries the component class
+and its props, so with the secret in the open anyone can mint a signed URL for
+any component with any props they like. Nothing 500s, nothing is logged, and the
+forged URL simply works.
+
+**It is opt-in, and that is worth being plain about.** An unset `APP_ENV` counts
+as local, so the guard fires when someone sets `APP_ENV=production` and forgets
+the secret — *not* when they set neither. A deployment that configures nothing at
+all still starts on the placeholder. `docker-compose.yml` reads `APP_ENV` from
+the environment for exactly that reason, so the one flag that turns the guard on
+is easy to set:
+
+```bash
+APP_ENV=production APP_SECRET=$(openssl rand -hex 32) docker compose up -d
+```
+
+The check runs in `App::boot()`, so it covers `public/index.php` and the console
+alike — `empira migrate` on a misconfigured server fails rather than quietly
+migrating somewhere nobody will look.
