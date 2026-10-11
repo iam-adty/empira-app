@@ -22,11 +22,11 @@ app/
 ├── composer.json      requires iam-adty/empira-principle at dev-main
 ├── phpunit.xml
 ├── studio.json        links ../principle through franzl/studio
-├── Dockerfile         php-fpm
-├── docker/nginx.conf
-├── docker-compose.yml nginx + php-fpm + PostgreSQL
+├── Dockerfile         FrankenPHP, worker mode
+├── docker/entrypoint.sh  starts FrankenPHP; picks worker or classic
+├── docker-compose.yml FrankenPHP + PostgreSQL
 ├── migrations/        versioned schema changes
-├── public/index.php   the only file the web server runs
+├── public/index.php   front controller *and* worker script
 ├── src/
 │   ├── App.php        wiring: registry, database, auth, routes
 │   ├── Css.php        the global stylesheet
@@ -81,9 +81,21 @@ If you do not see a change, check that symlink first; do not reinstall.
 - **`Component::validate()` returns an `ErrorBag`; it does not throw.** Wrapping
   it in `try { … } catch (ValidationException)` silently lets invalid input
   reach the database.
-- **The app image bakes the framework into `vendor/`.** After editing
-  `../principle/src`, run `docker compose build app` — the symlink that makes
-  local editing free does not apply inside the image.
+- **The app image bakes the framework into `vendor/`, and a named volume
+  shadows it.** After editing `../principle/src`, `docker compose build app` is
+  **not enough** — the `vendor` volume still holds the previous copy, and the
+  container will cheerfully run the old framework while you debug the new one.
+  Use `docker compose down -v && docker compose up -d --build`. Check with
+  `docker compose exec app grep -c someNewMethod vendor/iam-adty/empira-principle/src/…`.
+  The symlink that makes local editing free does not apply inside the image.
+- **Boot is not once.** FrankenPHP runs a worker thread per CPU and each one
+  runs `App::boot()`, so "is Ada seeded?" is asked by 32 threads that all answer
+  no. `App::bootLock()` puts it back to happening once — a `pg_advisory_lock` on
+  PostgreSQL, `flock()` on SQLite. Touching the seeder without the lock brings
+  back unique-index deaths.
+- **`emit()`, never `send()`.** `send()` exits, which takes the worker down and
+  earns you one request per process. `public/index.php` uses `emit()` for
+  exactly this reason.
 
 ## Conventions
 
@@ -164,8 +176,14 @@ neither is the absence of a "switch account" link.
 
 ```bash
 composer serve                      # SQLite, PHP's built-in server
-docker compose up --build           # PostgreSQL behind nginx and php-fpm
+docker compose up --build           # PostgreSQL behind FrankenPHP
 ```
+
+The compose app runs in **worker mode**: one boot, many requests per process.
+`APP_RUNTIME=classic` drops back to a fresh runtime per request, which is the
+comparison to make when something behaves differently. `FRANKENPHP_WORKERS=1`
+forces a single worker — which is how you check that state is not carrying
+between requests, because then every request is guaranteed the same process.
 
 ## `APP_SECRET`
 

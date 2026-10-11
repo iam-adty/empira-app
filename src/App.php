@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App;
 
-use App\Auth\DemoGuard;
 use App\Auth\UserRepository;
 use App\Components\LoginForm;
 use App\Components\LogoutButton;
@@ -16,6 +15,7 @@ use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\DatabaseUserProvider;
 use IamAdty\Empira\Auth\SessionGuard;
 use IamAdty\Empira\Config\Env;
+use IamAdty\Empira\Data\Connection;
 use IamAdty\Empira\Data\Migrator;
 use IamAdty\Empira\Security\Csrf;
 use IamAdty\Empira\State\SessionState;
@@ -110,7 +110,9 @@ final class App
     /**
      * Apply migrations, then put one user in so the demo has somebody to be.
      *
-     * The seeder is idempotent: booting twice must not fail on a unique index.
+     * The seeder is idempotent, but only in sequence: "is Ada here?" followed by
+     * "insert Ada" is fine twice running and hopeless in parallel, which is
+     * exactly what a worker does. So the pair is taken under {@see bootLock()}.
      */
     private static function prepareDatabase(Application $app): void
     {
@@ -129,17 +131,64 @@ final class App
             }
         }
 
-        (new Migrator($connection, dirname(__DIR__) . '/migrations'))->run();
+        $unlock = self::bootLock($connection);
 
-        $users = new DatabaseUserProvider($app->db());
+        try {
+            (new Migrator($connection, dirname(__DIR__) . '/migrations'))->run();
 
-        if ($users->byCredential('ada@example.com') === null) {
-            $app->db()->insert('users', [
-                'email' => 'ada@example.com',
-                'name' => 'Ada Lovelace',
-                'password_hash' => $users->hash('correct horse battery staple'),
-            ]);
+            $users = new DatabaseUserProvider($app->db());
+
+            if ($users->byCredential('ada@example.com') === null) {
+                $app->db()->insert('users', [
+                    'email' => 'ada@example.com',
+                    'name' => 'Ada Lovelace',
+                    'password_hash' => $users->hash('correct horse battery staple'),
+                ]);
+            }
+        } finally {
+            $unlock();
         }
+    }
+
+    /**
+     * Serialise boot across the worker threads.
+     *
+     * Worker mode is not one boot. FrankenPHP starts a thread per CPU, and every
+     * one of them runs this file, so a dozen threads can all reach the seeder
+     * having all found it empty — and eleven of them die on the unique index,
+     * each taking its worker down with it.
+     *
+     * A lock puts boot back to happening once. The first thread through
+     * migrates and seeds; the rest wait, and then find the work already done.
+     * PostgreSQL takes an advisory lock, which is exactly the primitive it has
+     * for this. SQLite has no server to arbitrate, so it takes `flock()` on a
+     * file beside the database — which is the same guarantee from the other end.
+     *
+     * @return callable(): void release the lock
+     */
+    private static function bootLock(Connection $connection): callable
+    {
+        if ($connection->grammar()->driver() === 'sqlite') {
+            $file = (string) ($connection->fetchOne('PRAGMA database_list')['file'] ?? '');
+            $path = ($file !== '' ? dirname($file) : dirname(__DIR__) . '/storage') . '/.boot.lock';
+
+            $handle = @fopen($path, 'c');
+
+            if ($handle !== false && flock($handle, LOCK_EX)) {
+                return static function () use ($handle): void {
+                    flock($handle, LOCK_UN);
+                    fclose($handle);
+                };
+            }
+        }
+
+        // Any value will do, so long as this application uses it and nothing
+        // else does. The name is this app's, as a number.
+        $connection->execute('SELECT pg_advisory_lock(404915811)');
+
+        return static function () use ($connection): void {
+            $connection->execute('SELECT pg_advisory_unlock(404915811)');
+        };
     }
 
     /**

@@ -1,8 +1,11 @@
-# The application, served by nginx through php-fpm.
+# The application, served by FrankenPHP in worker mode.
 #
-# php-fpm rather than the built-in server because this is closer to how the
-# thing would actually be deployed, and a demo that only works under
-# `php -S` hides anything that would break behind a real web server.
+# Worker mode boots the application once and keeps it in memory, so the
+# per-request bootstrap — container, route table, migrations, the seeder's
+# bcrypt — is paid once per process instead of once per request.
+# public/index.php is both the front controller and the worker script, and
+# the framework is written to be safe about serving many requests through one
+# Application.
 #
 # The build context is the *workspace root*, not this directory, because
 # iam-adty/empira-principle is a Composer path package that is not published
@@ -12,17 +15,13 @@
 # The package is copied rather than symlinked: Composer makes a path symlink
 # relative, and a relative symlink out of vendor/ does not survive being
 # mounted over. A copy is self-contained and one image layer.
-FROM php:8.4-fpm
+FROM dunglas/frankenphp:php8.4
 
-# pdo_pgsql for the compose database; pdo_sqlite is built in. libpq5 is
-# installed in its own right because purging libpq-dev would take it away and
-# leave an extension that compiles and then fails to load.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq-dev unzip \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql \
-    && apt-get purge -y libpq-dev \
-    && apt-get install -y --no-install-recommends libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# pdo_pgsql for the compose database; pdo_sqlite is built in. The image ships
+# install-php-extensions precisely so this stays one line. zip is here for
+# Composer: without it, and without the unzip binary, it cannot download a
+# dist package at all and `composer install` dies with a usage dump.
+RUN install-php-extensions pdo_pgsql zip
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
@@ -41,7 +40,9 @@ RUN composer config repositories.principle \
 
 COPY app/ .
 
-RUN composer dump-autoload --no-interaction
+RUN composer dump-autoload --no-interaction \
+    && chmod +x /var/www/html/docker/entrypoint.sh
 
-EXPOSE 9000
-CMD ["php-fpm"]
+EXPOSE 8080
+
+CMD ["/var/www/html/docker/entrypoint.sh"]

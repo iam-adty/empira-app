@@ -35,11 +35,11 @@ to the signed endpoints its own markup advertises.
 app/
 ├── composer.json
 ├── phpunit.xml
-├── Dockerfile            php-fpm, for docker compose
-├── docker/nginx.conf     serves the document, hands PHP to php-fpm
-├── docker-compose.yml    nginx + php-fpm + PostgreSQL
+├── Dockerfile            FrankenPHP in worker mode
+├── docker/entrypoint.sh  starts FrankenPHP; worker or classic
+├── docker-compose.yml    FrankenPHP + PostgreSQL
 ├── migrations/           versioned schema changes
-├── public/index.php      the only file the web server runs
+├── public/index.php      the front controller, and the worker script
 ├── src/
 │   ├── App.php           wiring: registry, database, auth, routes
 │   ├── Css.php           the global stylesheet
@@ -122,8 +122,13 @@ against the global sheet.
 
 ```bash
 composer serve                      # SQLite, PHP's built-in server
-docker compose up --build           # PostgreSQL behind nginx and php-fpm
+docker compose up --build           # PostgreSQL behind FrankenPHP, worker mode
 ```
+
+The compose app runs in **worker mode** — the application boots once and serves
+many requests from memory. `APP_RUNTIME=classic` runs the front controller afresh
+per request instead, and `FRANKENPHP_WORKERS=1` forces a single worker, which is
+how you check that nothing is carrying over between requests.
 
 A demo account is seeded so there is something to sign in as:
 
