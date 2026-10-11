@@ -65,7 +65,7 @@ final class Seed implements Command
             return 1;
         }
 
-        $output->line(sprintf('  seeded %s (id %s)', $email, $user->id));
+        $output->line(sprintf('  seeded %s (id %s)', $email, $user->id()));
         $output->line(sprintf('  sign in at /login with the password: %s', $password));
 
         return 0;

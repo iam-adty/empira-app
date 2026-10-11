@@ -7,7 +7,7 @@ namespace App;
 use App\Auth\UserRepository;
 use App\Console\Seed;
 use IamAdty\Empira\Application;
-use IamAdty\Empira\Auth\DatabaseUserProvider;
+use IamAdty\Empira\Auth\DoctrineUserProvider;
 use IamAdty\Empira\Auth\SessionGuard;
 use IamAdty\Empira\Config\Env;
 use IamAdty\Empira\Security\Csrf;
@@ -59,14 +59,23 @@ final class App
         self::publishDatabaseDefaults();
         $app->database(self::databaseConfig());
 
+        // The ORM, mapped over `src/` — this application's entities, plus the
+        // framework's own `Auth` ones, which `orm()` always includes so that
+        // `DoctrineUserProvider` can find a user.
+        $app->orm(self::databaseConfig(), [__DIR__]);
+
         // Who is asking: a session cookie, which is an ambient credential and
         // therefore the thing CSRF protection exists for. The components do
         // their own CSRF check, so no global middleware is wired here.
-        $users = new DatabaseUserProvider($app->db());
+        //
+        // The guard holds the *provider*, not an entity: the provider is handed
+        // an EntityManager that `Application::handle()` clears between requests,
+        // so a user loaded here belongs to this request and not to the worker.
+        $users = new DoctrineUserProvider($app->entities());
 
         $app->auth(new SessionGuard($app->session(), $users));
 
-        $repository = new UserRepository($app->db(), $users);
+        $repository = new UserRepository($app->entities(), $users);
 
         // The repository the form components ask for by type.
         $app->container()->instance(UserRepository::class, $repository);

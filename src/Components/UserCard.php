@@ -49,7 +49,7 @@ final class UserCard extends Component
                     $this->hx->dt()->text('Email'),
                     $this->hx->dd()->text((string) $user->attribute('email', '')),
                     $this->hx->dt()->text('Id'),
-                    $this->hx->dd()->text((string) $user->id),
+                    $this->hx->dd()->text((string) $user->id()),
                 ),
             );
     }

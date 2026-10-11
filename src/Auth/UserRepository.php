@@ -4,26 +4,29 @@ declare(strict_types=1);
 
 namespace App\Auth;
 
-use IamAdty\Empira\Auth\DatabaseUserProvider;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\EntityUniqueConstraintViolationException;
+use IamAdty\Empira\Auth\DoctrineUserProvider;
 use IamAdty\Empira\Auth\User;
-use IamAdty\Empira\Data\Db;
 
 /**
  * Reading and writing users.
  *
- * `DatabaseUserProvider` deliberately does not write — an authentication
- * scheme should not decide what your sign-up form is allowed to create — so
- * registration lives here, on the application side of the seam.
+ * Registration lives here rather than on the provider because an authentication
+ * scheme should not decide what a sign-up form is allowed to create. The
+ * provider still answers every question auth asks — who is id 7, is this their
+ * password — and this is the application sitting on top of it.
  *
- * Everything a guard needs to *identify* someone still comes from the
- * provider, so swapping this for an ORM-backed one later changes nothing in
- * authentication: the guards ask a `UserProvider`, and this is one.
+ * Writing goes through the ORM, which is what it is for: the unit of work
+ * decides what to insert and what to leave alone, and the unique index is
+ * enforced by the database rather than by a check-then-write that two requests
+ * can both pass.
  */
 final class UserRepository
 {
     public function __construct(
-        private readonly Db $db,
-        private readonly DatabaseUserProvider $users,
+        private readonly EntityManagerInterface $entities,
+        private readonly DoctrineUserProvider $users,
     ) {
     }
 
@@ -38,13 +41,13 @@ final class UserRepository
     }
 
     /**
-     * Create a user and sign them straight in.
+     * Create a user and return it, persisted.
      *
      * The unique index on the email is what actually prevents a duplicate; the
-     * check before it only exists to produce a readable message in the common
-     * case. Two concurrent registrations can still race past it, so the
-     * violation is caught rather than left to become a 500 — a race should end
-     * in "that email is taken", not a stack trace.
+     * check before it only produces a readable message in the common case. Two
+     * concurrent registrations can still race past it, so the violation is
+     * caught rather than left to become a 500 — a race should end in "that
+     * email is taken", not a stack trace.
      *
      * @throws DuplicateEmail
      */
@@ -54,42 +57,15 @@ final class UserRepository
             throw new DuplicateEmail();
         }
 
+        $user = new User($email, $name, $this->users->hash($password));
+
         try {
-            $this->db->insert('users', [
-                'email' => $email,
-                'name' => $name,
-                'password_hash' => $this->users->hash($password),
-            ]);
-        } catch (\PDOException $e) {
-            if (self::isUniqueViolation($e)) {
-                throw new DuplicateEmail();
-            }
-
-            throw $e;
-        }
-
-        $user = $this->byEmail($email);
-
-        if ($user === null) {
-            throw new \RuntimeException('The user was written but could not be read back.');
+            $this->entities->persist($user);
+            $this->entities->flush();
+        } catch (EntityUniqueConstraintViolationException) {
+            throw new DuplicateEmail();
         }
 
         return $user;
-    }
-
-    /**
-     * Is this the driver complaining about a unique index?
-     *
-     * SQLite says `UNIQUE constraint failed` and PostgreSQL says `duplicate key
-     * value violates unique constraint`; both are matched rather than caught
-     * wholesale, so an unrelated database error is not reported as a duplicate
-     * email.
-     */
-    private static function isUniqueViolation(\PDOException $e): bool
-    {
-        $message = $e->getMessage();
-
-        return str_contains($message, 'UNIQUE constraint failed')
-            || str_contains($message, 'duplicate key value violates unique constraint');
     }
 }
