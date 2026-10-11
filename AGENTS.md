@@ -27,7 +27,6 @@ app/
 ├── docker-compose.yml FrankenPHP + PostgreSQL
 ├── migrations/        versioned schema changes
 ├── public/index.php   front controller *and* worker script
-├── tests/AppTest.php  the app, end to end
 ├── src/
 │   ├── App.php        wiring: registry, database, auth, routes
 │   ├── Css.php        the global stylesheet
@@ -38,7 +37,8 @@ app/
 │   ├── Routing/       AppRoutes — routes that are not pages
 │   └── Components/    NavBar, LoginForm, RegisterForm, LogoutButton,
 │                      UserCard, FormField, Widget
-└── tests/AppTest.php  the app, end to end
+├── tests/AppTest.php  the app, end to end
+└── tools/test         runs the suite, and refuses a truncated run
 ```
 
 Scratch space is `../tmp`, above both packages rather than inside either, and it
@@ -129,6 +129,13 @@ If you do not see a change, check that symlink first; do not reinstall.
 
 `tests/AppTest.php` drives the app the way htmx would — render the page,
 extract the signed URL from its own markup, post to it, assert on the response.
+
+`composer test` goes through `tools/test`, which checks that the run **finished**
+rather than trusting PHPUnit's exit status. That status cannot report truncation:
+an `exit` anywhere in the code ends the process before PHPUnit calculates one, so
+a suite can stop after a handful of tests and still return 0. The script refuses a
+run with no summary line, and `phpunit.xml` sets `failOnEmptyTestSuite` so a run
+that matched nothing is a failure rather than a pass.
 
 ```php
 protected function setUp(): void

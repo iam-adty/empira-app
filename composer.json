@@ -21,7 +21,7 @@
         }
     },
     "scripts": {
-        "test": "phpunit",
+        "test": "tools/test",
         "serve": "php -S localhost:8000 -t public public/index.php"
     },
     "config": {

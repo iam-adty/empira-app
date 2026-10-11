@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#
+# Run the application suite, and make sure it finished.
+#
+# The framework's gate is tools/test in ../principle, and the same rule applies
+# here for the same reason: PHPUnit picks its exit status in
+# ShellExitCodeCalculator, which nothing reaches if the process exits first. An
+# `exit` anywhere in the code under test therefore truncates the run, prints no
+# summary, and exits **0** — so a bare `phpunit` can report success having run
+# a fraction of the suite, and "the tests pass" means nothing.
+#
+# Two failures are covered here:
+#
+#   * nothing ran at all — `failOnEmptyTestSuite` in phpunit.xml, which gives
+#     the right exit code and PHPUnit's own message
+#   * the run stopped early — the summary check below
+#
+# The application suite needs no services: it is plain PHPUnit on a host PHP
+# against a SQLite file in the workspace tmp/.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+
+# `set -e` would abandon the pipeline the moment PHPUnit returned non-zero,
+# taking the summary check with it, so the status is captured instead.
+status=0
+vendor/bin/phpunit --colors=never "$@" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
+
+if [ "$status" -ne 0 ]; then
+    exit "$status"
+fi
+
+# `OK (...)` is a clean run and `Tests: ...` is a run with failures — but the
+# latter already exited non-zero above, so at this point the absence of either
+# means the process ended early.
+if ! grep -qE '^(OK|Tests:)' "$log"; then
+    cat >&2 <<'MESSAGE'
+
+The suite did not finish.
+
+PHPUnit exited successfully but printed no summary, which means the PHP process
+ended before PHPUnit's exit code was calculated — an `exit` or `die` somewhere in
+the code under test, or a fatal error with the exit status swallowed.
+
+The run above is truncated: some tests never ran. Anything asserted about "the
+suite passes" from this run is void.
+
+MESSAGE
+    exit 1
+fi
