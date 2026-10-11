@@ -13,8 +13,8 @@ declare(strict_types=1);
  *
  *     empira serve
  *
- * Every htmx request is intercepted inside `send()`, so the routes in
- * `routes.php` only ever see ordinary page traffic.
+ * Every htmx request is intercepted inside `send()`, so the page routes
+ * declared with `#[Route]` in `src/` only ever see ordinary page traffic.
  */
 
 use App\App;

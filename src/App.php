@@ -39,7 +39,13 @@ final class App
             ->alias('todos', TodoList::class)
             ->alias('search', SearchBox::class);
 
-        (require __DIR__ . '/../routes.php')($app->routes());
+        // Routes that are not pages: no layout, registered deliberately.
+        $app->registrar(Routing\AppRoutes::class);
+
+        // Pages: every `#[Route]` under `src/`. Ordering is by specificity, so
+        // `/todos/new` is matched before `/todos/{id}` no matter which file
+        // happens to sort first.
+        $app->discover(__DIR__, __NAMESPACE__);
 
         $app->onHttpError(static fn(int $status, string $message): string => sprintf(
             '<!doctype html><meta charset="utf-8"><title>%d</title><h1>%d</h1><p>%s</p>',

@@ -86,6 +86,36 @@ final class AppTest extends TestCase
         }
     }
 
+    public function testThePageRouteComesFromAnAttributeOnTheLayout(): void
+    {
+        [$app] = $this->app();
+
+        // The URL is declared on `HomeLayout`; there is no route table to keep
+        // in step with the page.
+        $this->assertTrue($app->routes()->has('home'));
+        $this->assertSame(200, $app->handle(new Request('GET', '/'))->status());
+    }
+
+    public function testAPageReadsTheQueryStringThroughMount(): void
+    {
+        [$app] = $this->app();
+
+        $body = $app->handle(new Request('GET', '/', query: ['q' => 'ember']))->body();
+
+        // `mount()` pulled `q` off the request; the search box renders it.
+        $this->assertStringContainsString('value="ember"', $body);
+    }
+
+    public function testRoutesThatAreNotPagesAreRegisteredExplicitly(): void
+    {
+        [$app] = $this->app();
+
+        $response = $app->handle(new Request('GET', '/healthz'));
+
+        $this->assertSame(200, $response->status());
+        $this->assertSame('{"ok":true}', $response->body());
+    }
+
     public function testUnknownRoutes404(): void
     {
         [$app] = $this->app();
