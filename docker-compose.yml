@@ -43,7 +43,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     healthcheck:
       # Replaces the base image's own check, which curls Caddy's admin endpoint
       # on :2019 — and `php-server run` disables that endpoint, so it can never
