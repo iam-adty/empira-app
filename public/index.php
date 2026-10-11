@@ -26,7 +26,6 @@ declare(strict_types=1);
  */
 
 use App\App;
-use IamAdty\Empira\Http\Request;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -42,10 +41,11 @@ if (getenv('APP_RUNTIME') !== 'worker') {
 
 $handler = static function () use ($app): void {
     try {
-        // `emit()`, not `send()`. An `exit` here would take the worker down,
+        // `respond()`, not `send()`. An `exit` would take the worker down,
         // FrankenPHP would restart it, and the process would serve exactly one
-        // request — correct, and none of the point.
-        $app->handle(Request::capture())->emit();
+        // request — correct, and none of the point. `respond()` is the same
+        // call without the exit.
+        $app->respond();
     } catch (\Throwable $e) {
         // `set_exception_handler` only fires when the script ends, which in a
         // worker is never. A genuine bug the framework chose to re-throw has to
