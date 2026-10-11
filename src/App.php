@@ -6,9 +6,13 @@ namespace App;
 
 use App\Auth\UserRepository;
 use App\Console\Seed;
+use App\RateLimit\RateLimiter;
+use Doctrine\DBAL\DriverManager;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\DoctrineUserProvider;
 use IamAdty\Empira\Auth\SessionGuard;
+use IamAdty\Empira\Config\Config;
+use IamAdty\Empira\Config\DatabaseConfig;
 use IamAdty\Empira\Config\Env;
 use IamAdty\Empira\Security\Csrf;
 use IamAdty\Empira\State\SessionState;
@@ -64,6 +68,20 @@ final class App
         // per worker thread, and a boot that migrates is a boot that has eleven
         // threads racing each other through the same migration.
         self::publishDatabaseDefaults();
+
+        // A worker is per-thread and this stack runs 32 of them, so the rate
+        // limiter's state has to live where every thread can reach it. Binding
+        // it here means a component action can ask for it by type, the same way
+        // it asks for `Auth`.
+        //
+        // It gets its own connection rather than the ORM's: the unit of work is
+        // cleared between requests, and a limiter that shared it would have its
+        // counters cleared out from under it.
+        $app->container()->instance(RateLimiter::class, new RateLimiter(
+            DriverManager::getConnection(
+                DatabaseConfig::dbalParameters(new Config(self::databaseConfig()))
+            )
+        ));
 
         // The ORM, mapped over `src/` — this application's entities, plus the
         // framework's own `Auth` ones, which `orm()` always includes so that
