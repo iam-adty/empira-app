@@ -104,6 +104,13 @@ If you do not see a change, check that symlink first; do not reinstall.
   no. `App::bootLock()` puts it back to happening once — a `pg_advisory_lock` on
   PostgreSQL, `flock()` on SQLite. Touching the seeder without the lock brings
   back unique-index deaths.
+- **The boot lock has no timeout, on purpose.** It looks like a gap and is not.
+  The holder runs migrations plus one bcrypt hash — about half a second — so 31
+  threads legitimately wait, and **waiting is correct**. A timeout converts that
+  into a boot failure, so any safe value has to be generous, and a generous one
+  only guards against a hang that `docker compose up --wait` and the healthcheck
+  already surface loudly. Do not add one without a failure it would actually
+  catch.
 - **`emit()`, never `send()`.** `send()` exits, which takes the worker down and
   earns you one request per process. `public/index.php` uses `emit()` for
   exactly this reason.
