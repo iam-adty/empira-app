@@ -9,9 +9,10 @@ wire this up?" has an answer you can read in one sitting.
 ## Commands
 
 ```bash
-composer test                       # 26 tests, 83 assertions
+composer test                       # 27 tests, 85 assertions
 composer serve                      # http://localhost:8000
-vendor/bin/empira serve             # the framework's console, same thing
+vendor/bin/empira migrate           # the schema, before anything serves
+vendor/bin/empira seed              # the demo account
 composer validate                   # must stay clean
 ```
 
@@ -25,12 +26,14 @@ app/
 ├── Dockerfile         FrankenPHP, worker mode
 ├── docker/entrypoint.sh  starts FrankenPHP; picks worker or classic
 ├── docker-compose.yml FrankenPHP + PostgreSQL
-├── migrations/        versioned schema changes
+├── migrations/        Doctrine migrations: Version*.php
+├── bootstrap/app.php  what `bin/empira` boots to find this app's commands
 ├── public/index.php   front controller *and* worker script
 ├── src/
 │   ├── App.php        wiring: registry, database, auth, routes
 │   ├── Css.php        the global stylesheet
 │   ├── Auth/          UserRepository — registration
+│   ├── Console/       Seed — a command this app supplies
 │   ├── Layouts/       SiteLayout — the master document
 │   ├── Middleware/    RedirectGuests, RedirectIfAuthenticated
 │   ├── Pages/         Home, Login, Register, Dashboard
@@ -101,18 +104,17 @@ If you do not see a change, check that symlink first; do not reinstall.
 - **Never rebuild to test a code change.** Every PHP file in either package is
   mounted and watched. Rebuilding for a code change is the symptom of a mount
   that has gone wrong, not the remedy.
-- **Boot is not once.** FrankenPHP runs a worker thread per CPU and each one
-  runs `App::boot()`, so "is Ada seeded?" is asked by 32 threads that all answer
-  no. `App::bootLock()` puts it back to happening once — a `pg_advisory_lock` on
-  PostgreSQL, `flock()` on SQLite. Touching the seeder without the lock brings
-  back unique-index deaths.
-- **The boot lock has no timeout, on purpose.** It looks like a gap and is not.
-  The holder runs migrations plus one bcrypt hash — about half a second — so 31
-  threads legitimately wait, and **waiting is correct**. A timeout converts that
-  into a boot failure, so any safe value has to be generous, and a generous one
-  only guards against a hang that `docker compose up --wait` and the healthcheck
-  already surface loudly. Do not add one without a failure it would actually
-  catch.
+- **Boot does not migrate or seed, on purpose.** `empira migrate` and
+  `empira seed` are deploy steps, run by `docker/entrypoint.sh` before FrankenPHP
+  starts (`APP_MIGRATE_ON_START=false` turns that off). Boot is per worker
+  thread, so a boot that migrates has every thread racing through the same
+  migration — that is what `App::bootLock()` used to paper over, and the lock is
+  gone now that nothing runs at boot. Do not move the seeder back.
+- **The entrypoint's migrate is a compromise a single container forces.** It is
+  once per *container start*, not once per deploy, and a scaled deployment runs
+  it several times. That is safe because Doctrine sees the migrations already
+  applied. Where a migration genuinely depends on running exactly once, it
+  belongs in a deploy job that finishes before the container starts.
 - **`respond()` in the worker loop, `send()` in classic mode.** `send()` exits,
   which takes the worker down and earns you one request per process.
   `public/index.php` branches on `APP_RUNTIME` for exactly that reason: worker
@@ -148,11 +150,18 @@ protected function setUp(): void
 }
 ```
 
-**One database per test class, not per test.** Booting seeds a user, and hashing
-one with bcrypt costs about half a second; a fresh file per test turned a 0.07s
-suite into 22s. Sharing it is safe because every test signs in as itself and
-uses an address generated for that test. The file is created per *run*, so
-nothing leaks between runs.
+**One database per test class, not per test.** Hashing the seeded user with
+bcrypt costs about half a second, and a fresh file per test turned a 0.07s suite
+into 22s. Sharing it is safe because every test signs in as itself and uses an
+address generated for that test. The file is created per *run*, so nothing leaks
+between runs.
+
+`setUpBeforeClass()` builds it by running the real commands — `empira migrate`,
+then `empira seed` — rather than by booting the application and hoping it
+prepared the schema. That is deliberate: a suite that depends on boot to create
+its database cannot survive the change that stopped boot migrating, and would go
+on hiding the cost of anything else that runs at boot. It also means the tests
+exercise the console an operator actually types.
 
 ## Before committing
 
@@ -180,13 +189,20 @@ else, where the route is not a page and should not pretend to be one.
 
 ## The database
 
-`App::boot()` calls `$app->database()`, migrates, and seeds one user. It reads
-`DB_*` from the environment, defaulting to a SQLite file in `storage/`, so
-`composer serve` needs no services.
+`App::boot()` calls `$app->database()` and reads `DB_*` from the environment,
+defaulting to a SQLite file in `storage/`, so `composer serve` needs no services.
 
-Migration and seed run on **boot**, which is a demo convenience and not a thing
-to copy: a real application migrates as a deploy step. The seeder is idempotent
-because booting twice must not fail on the unique index.
+Migrating and seeding are **deploy steps**, not boot:
+
+```bash
+php vendor/bin/empira migrate        # Doctrine, with its own version ledger
+php vendor/bin/empira seed           # this app's, registered at boot
+```
+
+`seed` exists because `App::boot()` calls `$app->command('seed', …)`, and
+`bin/empira` finds it through `bootstrap/app.php`. The seeder is idempotent,
+because a deploy step is allowed to be run twice — a retried pipeline should not
+fail on a seed that already happened.
 
 A seeded account, so there is something to sign in as:
 

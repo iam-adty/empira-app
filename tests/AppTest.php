@@ -7,6 +7,8 @@ namespace App\Tests;
 use App\App;
 use App\Auth\UserRepository;
 use IamAdty\Empira\Application;
+use IamAdty\Empira\Config\DatabaseConfig;
+use IamAdty\Empira\Console;
 use IamAdty\Empira\Http\Request;
 use IamAdty\Empira\Security\Csrf;
 use PHPUnit\Framework\TestCase;
@@ -47,6 +49,56 @@ final class AppTest extends TestCase
         }
 
         self::$database = $root . '/empira-app-test-' . bin2hex(random_bytes(6)) . '.sqlite';
+
+        // The schema is prepared here rather than by the application booting,
+        // because the application no longer migrates on boot — and that is the
+        // point of it. A test suite that depends on boot to build its database
+        // cannot survive the change that stops boot migrating, and would go on
+        // hiding the cost of anything else that runs at boot.
+        //
+        // So this is the deploy step, run once, exactly as it would be in
+        // production: `empira migrate`, then `empira seed`, against a database
+        // that is not there yet.
+        $_ENV['DB_DRIVER'] = 'sqlite';
+        $_ENV['DB_DATABASE'] = self::$database;
+
+        self::runConsole('migrate');
+        self::runConsole('seed');
+    }
+
+    /**
+     * Run one console command and require that it succeeded.
+     *
+     * The console is driven rather than Doctrine or the repository being called
+     * directly, so the suite exercises the path an operator actually types. A
+     * test that reached past `empira migrate` and `empira seed` would keep
+     * passing if those commands broke, which is the one thing worth checking.
+     */
+    private static function runConsole(string $command): void
+    {
+        $previous = getcwd();
+        $stream = fopen('php://memory', 'r+b');
+        $output = new Console\Output($stream, false);
+
+        try {
+            chdir(dirname(__DIR__));
+
+            $console = new Console\Application();
+
+            foreach (Console\Bootstrap::commandsFor(dirname(__DIR__)) as $name => $projectCommand) {
+                $console->project($name, $projectCommand);
+            }
+
+            $exit = $console->run(['empira', $command], $output);
+        } finally {
+            chdir((string) $previous);
+        }
+
+        rewind($stream);
+        $printed = trim((string) stream_get_contents($stream));
+        fclose($stream);
+
+        self::assertSame(0, $exit, sprintf('`empira %s` should succeed: %s', $command, $printed));
     }
 
     public static function tearDownAfterClass(): void
@@ -139,6 +191,29 @@ final class AppTest extends TestCase
         $this->assertStringContainsString('href="/login"', $body);
         $this->assertStringContainsString('href="/register"', $body);
         $this->assertStringNotContainsString('Your account', $body);
+    }
+
+    public function testTheApplicationAndTheConsoleAgreeOnWhichDatabaseThisIs(): void
+    {
+        // The bug this pins: `App::boot()` defaulted to storage/app.sqlite while
+        // `empira migrate` defaulted to `:memory:`, so `composer setup`
+        // migrated a database that vanished on exit and then seeded a real one
+        // with no `users` table in it.
+        //
+        // Booting publishes the application's defaults into `$_ENV`; this asks
+        // the framework's own reader — the one the console uses — what it would
+        // connect to, and requires the same answer the runtime uses.
+        $configured = $_ENV['DB_DATABASE'];
+
+        App::boot();
+
+        $fromConsoleReader = DatabaseConfig::fromEnvironment()->string('database');
+
+        self::assertSame($configured, $fromConsoleReader);
+
+        // And it is a file that exists, not `:memory:` — which would vanish the
+        // moment the process ended and report success on the way out.
+        self::assertFileExists($fromConsoleReader);
     }
 
     public function testTheHealthEndpointStillAnswersJson(): void

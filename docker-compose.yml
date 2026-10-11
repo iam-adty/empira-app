@@ -70,6 +70,11 @@ services:
       # Worker mode: one boot, many requests. Set to `classic` to run the front
       # controller afresh per request instead.
       APP_RUNTIME: worker
+      # Run `empira migrate` and `empira seed` before FrankenPHP starts. The
+      # application does not migrate at boot, because a worker boots once per
+      # thread and every thread would race through the same migration. Set to
+      # `false` where a deploy job owns the schema instead.
+      APP_MIGRATE_ON_START: "true"
       # PHP was not built to run forever, so the worker is recycled every so
       # often rather than accumulating whatever third-party code leaks.
       MAX_REQUESTS: "500"

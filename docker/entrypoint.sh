@@ -11,6 +11,24 @@ set -eu
 
 cd /workspace/app
 
+# Migrate and seed before serving anything.
+#
+# The application does not do this at boot, deliberately: a worker boots once
+# per thread, so a boot that migrates has every thread racing through the same
+# migration. Two choices remain, and this one is the honest one.
+#
+# Running them here is a real compromise, and it is the compromise a single
+# container forces. The schema is prepared once per *container start*, not once
+# per boot and not once per deploy, and `empira migrate` takes its own lock —
+# so a scaled deployment runs it several times, which is safe because Doctrine
+# sees the migrations have already been applied. A deployment where the
+# migration genuinely depends on running exactly once should do it in a job
+# that finishes before this command, not here.
+if [ "${APP_MIGRATE_ON_START:-true}" = "true" ]; then
+    php vendor/bin/empira migrate
+    php vendor/bin/empira seed
+fi
+
 # The root is public/ and only public/. It is what makes the front controller
 # findable, and it is the security boundary: with the root left at the project
 # directory, Caddy would serve src/, vendor/ and storage/ as documents.

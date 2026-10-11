@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace App;
 
 use App\Auth\UserRepository;
+use App\Console\Seed;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\DatabaseUserProvider;
 use IamAdty\Empira\Auth\SessionGuard;
 use IamAdty\Empira\Config\Env;
-use IamAdty\Empira\Data\Connection;
-use IamAdty\Empira\Data\Migrator;
 use IamAdty\Empira\Security\Csrf;
 use IamAdty\Empira\State\SessionState;
 use IamAdty\Empira\State\StateStore;
@@ -52,11 +51,13 @@ final class App
 
         // A SQLite file by default, so `composer serve` needs no services. The
         // Docker compose overrides these through the environment.
+        //
+        // Note the schema is *not* migrated here. Migrating and seeding are
+        // deploy steps — `empira migrate`, then `empira seed` — because boot is
+        // per worker thread, and a boot that migrates is a boot that has eleven
+        // threads racing each other through the same migration.
+        self::publishDatabaseDefaults();
         $app->database(self::databaseConfig());
-
-        // Migrate and seed on boot, which is a demo convenience and not a thing
-        // to copy: a real application migrates as a deploy step.
-        self::prepareDatabase($app);
 
         // Who is asking: a session cookie, which is an ambient credential and
         // therefore the thing CSRF protection exists for. The components do
@@ -65,8 +66,14 @@ final class App
 
         $app->auth(new SessionGuard($app->session(), $users));
 
+        $repository = new UserRepository($app->db(), $users);
+
         // The repository the form components ask for by type.
-        $app->container()->instance(UserRepository::class, new UserRepository($app->db(), $users));
+        $app->container()->instance(UserRepository::class, $repository);
+
+        // The framework cannot know what this application's seeders look like,
+        // so it registers them and the console collects them after booting us.
+        $app->command('seed', new Seed($repository));
 
         // Routes that are not pages: no layout, registered deliberately.
         $app->registrar(Routing\AppRoutes::class);
@@ -137,106 +144,55 @@ final class App
     }
 
     /**
-     * Database settings, from the environment when there is one.
+     * Write this application's database defaults into `$_ENV`, without
+     * overwriting anything that was already there.
+     *
+     * This exists because there were two readers of `DB_*` and two sets of
+     * defaults. `App::boot()` wanted `storage/app.sqlite`; `empira migrate`,
+     * reading the same variables through the framework, defaulted to `:memory:`
+     * — so `composer setup` migrated a database that vanished on exit and then
+     * seeded a real one that had no `users` table.
+     *
+     * The application owns the defaults, because only the application knows
+     * where its SQLite file lives. It publishes them once, at boot, and
+     * everything downstream — the runtime connection, the migration command, the
+     * seeder — reads the same answer. `composer setup` boots the application
+     * through `bootstrap/app.php`, which is how it inherits them too.
+     */
+    private static function publishDatabaseDefaults(): void
+    {
+        $defaults = [
+            'DB_DRIVER' => 'sqlite',
+            'DB_DATABASE' => dirname(__DIR__) . '/storage/app.sqlite',
+            'DB_HOST' => 'db',
+            'DB_PORT' => '0',
+            'DB_USERNAME' => '',
+            'DB_PASSWORD' => '',
+        ];
+
+        foreach ($defaults as $key => $value) {
+            if (!isset($_ENV[$key]) || $_ENV[$key] === '') {
+                $_ENV[$key] = $value;
+            }
+        }
+    }
+
+    /**
+     * Database settings, from the environment — which {@see
+     * publishDatabaseDefaults()} has already filled in.
      *
      * @return array<string, mixed>
      */
     private static function databaseConfig(): array
     {
-        $driver = $_ENV['DB_DRIVER'] ?? 'sqlite';
-
         return [
-            'driver' => $driver,
+            'driver' => $_ENV['DB_DRIVER'] ?? 'sqlite',
             'database' => $_ENV['DB_DATABASE'] ?? dirname(__DIR__) . '/storage/app.sqlite',
             'host' => $_ENV['DB_HOST'] ?? 'db',
             'port' => (int) ($_ENV['DB_PORT'] ?? 0),
             'username' => $_ENV['DB_USERNAME'] ?? '',
             'password' => $_ENV['DB_PASSWORD'] ?? '',
         ];
-    }
-
-    /**
-     * Apply migrations, then put one user in so the demo has somebody to be.
-     *
-     * The seeder is idempotent, but only in sequence: "is Ada here?" followed by
-     * "insert Ada" is fine twice running and hopeless in parallel, which is
-     * exactly what a worker does. So the pair is taken under {@see bootLock()}.
-     */
-    private static function prepareDatabase(Application $app): void
-    {
-        $connection = $app->db()->connection();
-
-        // Asked of the connection rather than re-read from the environment:
-        // `$_ENV['DB_DRIVER'] ?? 'sqlite' === 'sqlite'` binds as
-        // `$_ENV['DB_DRIVER'] ?? true`, so the SQLite branch would have run —
-        // and issued a SQLite-only PRAGMA — against PostgreSQL.
-        if ($connection->grammar()->driver() === 'sqlite') {
-            $file = (string) ($connection->fetchOne('PRAGMA database_list')['file'] ?? '');
-            $directory = dirname($file);
-
-            if ($file !== '' && !is_dir($directory)) {
-                mkdir($directory, 0o777, true);
-            }
-        }
-
-        $unlock = self::bootLock($connection);
-
-        try {
-            (new Migrator($connection, dirname(__DIR__) . '/migrations'))->run();
-
-            $users = new DatabaseUserProvider($app->db());
-
-            if ($users->byCredential('ada@example.com') === null) {
-                $app->db()->insert('users', [
-                    'email' => 'ada@example.com',
-                    'name' => 'Ada Lovelace',
-                    'password_hash' => $users->hash('correct horse battery staple'),
-                ]);
-            }
-        } finally {
-            $unlock();
-        }
-    }
-
-    /**
-     * Serialise boot across the worker threads.
-     *
-     * Worker mode is not one boot. FrankenPHP starts a thread per CPU, and every
-     * one of them runs this file, so a dozen threads can all reach the seeder
-     * having all found it empty — and eleven of them die on the unique index,
-     * each taking its worker down with it.
-     *
-     * A lock puts boot back to happening once. The first thread through
-     * migrates and seeds; the rest wait, and then find the work already done.
-     * PostgreSQL takes an advisory lock, which is exactly the primitive it has
-     * for this. SQLite has no server to arbitrate, so it takes `flock()` on a
-     * file beside the database — which is the same guarantee from the other end.
-     *
-     * @return callable(): void release the lock
-     */
-    private static function bootLock(Connection $connection): callable
-    {
-        if ($connection->grammar()->driver() === 'sqlite') {
-            $file = (string) ($connection->fetchOne('PRAGMA database_list')['file'] ?? '');
-            $path = ($file !== '' ? dirname($file) : dirname(__DIR__) . '/storage') . '/.boot.lock';
-
-            $handle = @fopen($path, 'c');
-
-            if ($handle !== false && flock($handle, LOCK_EX)) {
-                return static function () use ($handle): void {
-                    flock($handle, LOCK_UN);
-                    fclose($handle);
-                };
-            }
-        }
-
-        // Any value will do, so long as this application uses it and nothing
-        // else does. The name is this app's, as a number.
-        $connection->execute('SELECT pg_advisory_lock(404915811)');
-
-        return static function () use ($connection): void {
-            $connection->execute('SELECT pg_advisory_unlock(404915811)');
-        };
     }
 
     /**
