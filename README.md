@@ -122,7 +122,7 @@ against the global sheet.
 
 ```bash
 composer serve                      # SQLite, PHP's built-in server
-docker compose up --build           # PostgreSQL behind FrankenPHP, worker mode
+docker compose up -d --wait         # PostgreSQL behind FrankenPHP, worker mode
 ```
 
 The compose app runs in **worker mode** — the application boots once and serves
@@ -130,15 +130,21 @@ many requests from memory. `APP_RUNTIME=classic` runs the front controller afres
 per request instead, and `FRANKENPHP_WORKERS=1` forces a single worker, which is
 how you check that nothing is carrying over between requests.
 
+**You only need to build once.** `app/src` and `principle/src` are bind-mounted
+into the container and the worker watches both, so an edit is an edit in the
+running system — no `--build`, no rebuild to test a change. The image needs
+rebuilding only when a `composer.json` changes, when the Dockerfile does, or on
+a fresh clone.
+
 A demo account is seeded so there is something to sign in as:
 
 ```
 ada@example.com  /  correct horse battery staple
 ```
 
-**The app image bakes the framework into `vendor/`,** so rebuild it
-(`docker compose build app`) after changing anything under `../principle/src`.
-The symlink that makes local editing free does not apply inside the image.
+Images are `empira/app` and `empira/principle`; the containers are
+`empira-app`, `empira-db` and `empira-principle-db`, plus the test runner as
+`empira-principle` while a suite is in flight.
 
 ## Working against the local framework
 

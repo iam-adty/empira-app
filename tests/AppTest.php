@@ -35,9 +35,12 @@ final class AppTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        // `app/tmp/`, for the same reason the framework's tests use its own:
-        // a failing run leaves its database somewhere you would think to look.
-        $root = dirname(__DIR__) . '/tmp';
+        // The workspace `tmp/`, shared with the framework's suite, for the same
+        // reason it uses its own: a failing run leaves its database somewhere
+        // you would think to look. Two levels up, because the folder sits above
+        // both packages rather than inside either — which is also what makes it
+        // resolve the same inside the container.
+        $root = dirname(__DIR__, 2) . '/tmp';
 
         if (! is_dir($root)) {
             mkdir($root, 0o777, true);

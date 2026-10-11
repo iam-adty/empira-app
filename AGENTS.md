@@ -9,7 +9,7 @@ wire this up?" has an answer you can read in one sitting.
 ## Commands
 
 ```bash
-composer test                       # 12 tests, 33 assertions
+composer test                       # 24 tests, 76 assertions
 composer serve                      # http://localhost:8000
 vendor/bin/empira serve             # the framework's console, same thing
 composer validate                   # must stay clean
@@ -27,6 +27,7 @@ app/
 ├── docker-compose.yml FrankenPHP + PostgreSQL
 ├── migrations/        versioned schema changes
 ├── public/index.php   front controller *and* worker script
+├── tests/AppTest.php  the app, end to end
 ├── src/
 │   ├── App.php        wiring: registry, database, auth, routes
 │   ├── Css.php        the global stylesheet
@@ -39,6 +40,11 @@ app/
 │                      UserCard, FormField, Widget
 └── tests/AppTest.php  the app, end to end
 ```
+
+Scratch space is `../tmp`, above both packages rather than inside either, and it
+is mounted into every container — so `tests/AppTest.php` reaches it as
+`dirname(__DIR__, 2) . '/tmp'` on the host and the same string inside the
+container. Nothing in `/tmp` ever holds a fixture.
 
 ## The framework is linked, not installed
 
@@ -81,13 +87,18 @@ If you do not see a change, check that symlink first; do not reinstall.
 - **`Component::validate()` returns an `ErrorBag`; it does not throw.** Wrapping
   it in `try { … } catch (ValidationException)` silently lets invalid input
   reach the database.
-- **The app image bakes the framework into `vendor/`, and a named volume
-  shadows it.** After editing `../principle/src`, `docker compose build app` is
-  **not enough** — the `vendor` volume still holds the previous copy, and the
-  container will cheerfully run the old framework while you debug the new one.
-  Use `docker compose down -v && docker compose up -d --build`. Check with
-  `docker compose exec app grep -c someNewMethod vendor/iam-adty/empira-principle/src/…`.
-  The symlink that makes local editing free does not apply inside the image.
+- **The framework's source is mounted live, but the `vendor` *volume* is not.**
+  `../principle/src` is bind-mounted over the copy the image baked in, so an edit
+  under `principle/src` is an edit in the running container — no rebuild, and the
+  worker restarts on its own. The autoloader is PSR-4, so new framework files
+  resolve too. What is *not* live is anything outside `src/`, and the `vendor`
+  named volume is seeded from the image once and then never refreshed. So a
+  changed `composer.json` — here or in the framework — still needs
+  `docker compose down -v && docker compose up -d --build`. Confirm which you
+  are in with `docker compose exec app grep -c someNewMethod vendor/iam-adty/empira-principle/src/…`.
+- **Never rebuild to test a code change.** Every PHP file in either package is
+  mounted and watched. Rebuilding for a code change is the symptom of a mount
+  that has gone wrong, not the remedy.
 - **Boot is not once.** FrankenPHP runs a worker thread per CPU and each one
   runs `App::boot()`, so "is Ada seeded?" is asked by 32 threads that all answer
   no. `App::bootLock()` puts it back to happening once — a `pg_advisory_lock` on

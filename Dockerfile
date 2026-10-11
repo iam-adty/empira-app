@@ -25,14 +25,22 @@ RUN install-php-extensions pdo_pgsql zip
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-WORKDIR /var/www/html
+# WORKDIR is this package's place *inside the workspace*, not the root of it,
+# because the suite shares a scratch folder with the framework: `/workspace/tmp`
+# is `../tmp` next to this directory. Keeping the layout identical to the host
+# is what lets one relative path mean one thing in both places.
+WORKDIR /workspace/app
 
 # Dependencies first, so an edit to a component does not re-download PHPUnit.
+#
+# The path package is copied to `/principle`, deliberately outside `/workspace`:
+# at runtime the workspace is bind-mounted over `/workspace`, and a build-time
+# path living underneath that mount is a trap for whoever reads this next.
 COPY principle /principle
 COPY app/composer.json ./composer.json
 # A previous build may have left a symlink where the package directory now has
 # to be written, which Docker refuses to overwrite.
-RUN rm -rf /var/www/html/vendor
+RUN rm -rf /workspace/app/vendor
 
 RUN composer config repositories.principle \
         '{"type":"path","url":"/principle","options":{"symlink":false,"versions":{"iam-adty/empira-principle":"dev-main"}}}' \
@@ -41,8 +49,8 @@ RUN composer config repositories.principle \
 COPY app/ .
 
 RUN composer dump-autoload --no-interaction \
-    && chmod +x /var/www/html/docker/entrypoint.sh
+    && chmod +x /workspace/app/docker/entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["/var/www/html/docker/entrypoint.sh"]
+CMD ["/workspace/app/docker/entrypoint.sh"]

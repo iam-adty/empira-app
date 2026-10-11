@@ -15,6 +15,7 @@
 services:
   db:
     image: postgres:18-alpine
+    container_name: empira-db
     environment:
       POSTGRES_USER: empira
       POSTGRES_PASSWORD: empira
@@ -35,11 +36,27 @@ services:
       # package that has to be in the build context. See the Dockerfile.
       context: ..
       dockerfile: app/Dockerfile
+    # Named rather than left to Compose, which would call it `app-app`.
+    image: empira/app
+    container_name: empira-app
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
+    healthcheck:
+      # Replaces the base image's own check, which curls Caddy's admin endpoint
+      # on :2019 — and `php-server run` disables that endpoint, so it can never
+      # pass. It also asked the wrong question: the admin port being open says
+      # nothing about whether PHP is serving. This one asks that.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8080/login || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      # Worker boot runs migrations and the seeder's bcrypt, so the first
+      # request is not instant. Without this the container is declared dead
+      # before it has finished starting.
+      start_period: 20s
     environment:
       APP_ENV: local
       # Generate a real one for anything that is not a demo.
@@ -61,12 +78,23 @@ services:
       # something about state carrying between them.
       FRANKENPHP_WORKERS: "${FRANKENPHP_WORKERS:-}"
     volumes:
-      # The source is mounted so an edit needs no rebuild. Under worker mode the
-      # entrypoint watches src/ and restarts the worker when it changes.
-      - .:/var/www/html
+      # The **workspace** is mounted, not just this package, so the layout inside
+      # the container matches the host — which is what lets one relative path
+      # find the shared `tmp/` from either side.
+      - ..:/workspace
       # …and vendor/ is not shadowed by that mount, or a fresh clone would have
       # no dependencies at all.
-      - vendor:/var/www/html/vendor
+      - vendor:/workspace/app/vendor
+      # The framework's source, live, over the copy the image baked in.
+      #
+      # Without this the image's copy wins and verifying a framework edit means
+      # rebuilding the image — minutes per check, which is how "just rebuild it"
+      # becomes the path of least resistance. The autoloader is PSR-4 (no
+      # `optimize-autoloader`, no authoritative classmap), so this needs no
+      # autoload regeneration: edits resolve, and so do new files.
+      #
+      # Mounted deeper than the volume above, so Docker applies it last.
+      - ../principle/src:/workspace/app/vendor/iam-adty/empira-principle/src
 
 volumes:
   vendor:
