@@ -81,9 +81,11 @@ If you do not see a change, check that symlink first; do not reinstall.
 
 ## Three things that will bite you
 
-- **A nested component still has to be registered.** `renderComponent()` builds
-  it directly, but its action token names the class and is resolved through the
-  registry when pressed — so an unregistered one answers 404.
+- **Composition is free.** `child()` hands back a component and `children()`
+  reports what a component composed. Nothing needs registering for a nested
+  component to answer its own action URLs — `$app->components(__NAMESPACE__)`
+  in `App::boot()` is the whole of it. An `alias()` is still worth adding for a
+  token that should be short or survive the class moving namespaces.
 - **`Component::validate()` returns an `ErrorBag`; it does not throw.** Wrapping
   it in `try { … } catch (ValidationException)` silently lets invalid input
   reach the database.
