@@ -35,7 +35,15 @@ final class AppTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$database = sys_get_temp_dir() . '/empira-app-test-' . bin2hex(random_bytes(6)) . '.sqlite';
+        // `app/tmp/`, for the same reason the framework's tests use its own:
+        // a failing run leaves its database somewhere you would think to look.
+        $root = dirname(__DIR__) . '/tmp';
+
+        if (! is_dir($root)) {
+            mkdir($root, 0o777, true);
+        }
+
+        self::$database = $root . '/empira-app-test-' . bin2hex(random_bytes(6)) . '.sqlite';
     }
 
     public static function tearDownAfterClass(): void
