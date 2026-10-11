@@ -35,52 +35,105 @@ to the signed endpoints its own markup advertises.
 app/
 ├── composer.json
 ├── phpunit.xml
+├── Dockerfile            php-fpm, for docker compose
+├── docker/nginx.conf     serves the document, hands PHP to php-fpm
+├── docker-compose.yml    nginx + php-fpm + PostgreSQL
+├── migrations/           versioned schema changes
 ├── public/index.php      the only file the web server runs
 ├── src/
-│   ├── App.php           wiring: registry, routes, error pages
-│   ├── Css.php           the stylesheet
-│   ├── Pages/            HomeLayout — the document, its URL and its regions
+│   ├── App.php           wiring: registry, database, auth, routes
+│   ├── Css.php           the global stylesheet
+│   ├── Auth/             UserRepository — registration
+│   ├── Layouts/          SiteLayout — the master document
+│   ├── Middleware/       RedirectGuests, RedirectIfAuthenticated
+│   ├── Pages/            Home, Login, Register, Dashboard
 │   ├── Routing/          AppRoutes — routes that are not pages
-│   └── Components/       Counter, TodoList, SearchBox
+│   └── Components/       NavBar, LoginForm, RegisterForm, LogoutButton,
+│                         UserCard, FormField, Widget
 └── tests/AppTest.php     the app, end to end
 ```
 
 ## How a page is put together
 
-A page declares its own URL, on the class that draws it:
+A page declares its own URL, **and its own gate**, on the class that draws it:
 
 ```php
-// src/Pages/HomeLayout.php
-#[Route('/', name: 'home')]
-final class HomeLayout extends BaseLayout
+// src/Pages/DashboardLayout.php
+#[Route('/dashboard', name: 'dashboard', methods: '*',
+    middleware: [RedirectGuests::class])]
+final class DashboardLayout extends SiteLayout
 {
-    public function mount(Request $request): void
+    protected function regions(): array
     {
-        $this->q = is_string($request->query['q'] ?? null) ? $request->query['q'] : '';
+        return [...parent::regions(), 'main' => fn(Region $r) => $r->component(UserCard::class)];
     }
-}```
-
-`App::boot()` discovers it. Routes that are not pages — a health check, say —
-are registered explicitly in `src/Routing/AppRoutes.php`.
-
-The layout declares **regions**, and each region is one card htmx can swap on its
-own:
-
-```php
-// src/Layout.php
-protected function regions(): array
-{
-    return [
-        'counter' => fn(Region $region) => $region
-            ->element('section')->class('card')
-            ->append($region->component(Counter::class)),
-    ];
 }
 ```
 
-The same route answers both kinds of request. A browser gets the whole document;
-a request carrying `HX-Request` gets only the region htmx named. The handler
-never has to know which it is serving.
+Pages extend `SiteLayout`, which declares the document, the `nav` region and the
+global stylesheet once — so a page cannot forget the navigation or spell it
+differently.
+
+`methods: '*'` is deliberate: *"this is for signed-in users"* should not depend
+on which verb arrived. It is not sufficient on its own, though — forms post to
+their own signed component URL, which no route middleware ever sees, so
+`LoginForm` and `RegisterForm` check for that too.
+
+## Authentication is components
+
+The forms render and handle their own submission. An action asks for what it
+needs by type, exactly as a controller does:
+
+```php
+#[Post]
+public function login(Auth $auth, UserRepository $users): void
+{
+    $user = $users->byEmail($this->request()->string('email'));
+
+    if ($user === null || !$users->verify($user, $this->request()->string('password'))) {
+        // The same message either way: telling them apart turns the form into
+        // an oracle for which addresses exist.
+        $this->with('error', 'Those credentials did not match any account.');
+
+        return;
+    }
+
+    $auth->login($user);
+
+    $this->response()->redirect('/dashboard');
+}
+```
+
+An action's return value is discarded — it responds by mutating props and the
+response, which is what the swap is built from.
+
+A component that nests another still has to be **registered**: `NavBar` renders
+`LogoutButton` directly, but the token its button carries names the class and is
+resolved through the registry when pressed.
+
+## Styling
+
+Global rules live in `Css::base()` and go in `<head>`. A component's own rules
+live in its `styles()` and are emitted **inside its root element** — which is
+the swap target — so they arrive again with every htmx swap, and win on order
+against the global sheet.
+
+## Running it
+
+```bash
+composer serve                      # SQLite, PHP's built-in server
+docker compose up --build           # PostgreSQL behind nginx and php-fpm
+```
+
+A demo account is seeded so there is something to sign in as:
+
+```
+ada@example.com  /  correct horse battery staple
+```
+
+**The app image bakes the framework into `vendor/`,** so rebuild it
+(`docker compose build app`) after changing anything under `../principle/src`.
+The symlink that makes local editing free does not apply inside the image.
 
 ## Working against the local framework
 

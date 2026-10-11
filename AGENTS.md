@@ -22,14 +22,21 @@ app/
 ├── composer.json      requires iam-adty/empira-principle at dev-main
 ├── phpunit.xml
 ├── studio.json        links ../principle through franzl/studio
+├── Dockerfile         php-fpm
+├── docker/nginx.conf
+├── docker-compose.yml nginx + php-fpm + PostgreSQL
+├── migrations/        versioned schema changes
 ├── public/index.php   the only file the web server runs
 ├── src/
-│   ├── App.php        wiring: registry, routes, error pages
-│   ├── Auth/          DemoGuard — **not authentication**, see below
-│   ├── Pages/         HomeLayout, AdminLayout — a page and its URL
+│   ├── App.php        wiring: registry, database, auth, routes
+│   ├── Css.php        the global stylesheet
+│   ├── Auth/          UserRepository — registration
+│   ├── Layouts/       SiteLayout — the master document
+│   ├── Middleware/    RedirectGuests, RedirectIfAuthenticated
+│   ├── Pages/         Home, Login, Register, Dashboard
 │   ├── Routing/       AppRoutes — routes that are not pages
-│   ├── Css.php        the stylesheet
-│   └── Components/    Counter, TodoList, SearchBox
+│   └── Components/    NavBar, LoginForm, RegisterForm, LogoutButton,
+│                      UserCard, FormField, Widget
 └── tests/AppTest.php  the app, end to end
 ```
 
@@ -54,41 +61,57 @@ If you do not see a change, check that symlink first; do not reinstall.
 
 ## Things this app demonstrates
 
-- Three `#[Prop]` components with different verbs — `Counter` (`#[Post]`),
-  `TodoList` (`#[Post]` + a legacy `actions()` list), `SearchBox` (`#[Get]`)
-- A `Layout` whose three cards are **regions**, so each can be swapped alone
+- A page that declares **its own URL and its own gate**, on one attribute
+- A **master layout** (`SiteLayout`) with pages extending it, so the document,
+  the `nav` region and the global sheet are declared once
+- **Authentication in components**: `LoginForm::login(Auth, UserRepository)` —
+  an action taking its dependencies by type, as a controller does
+- A component rendering another (`NavBar` → `LogoutButton`, forms → `FormField`)
+- **Per-component styling**, emitted inside the swap target so it survives an
+  htmx swap
 - Full-page vs fragment rendering from the same route
 - CSRF inherited from a single `hx-headers` on `<body>`
-- Stateless token round-trip (`Counter`) alongside session-backed state
-  (`TodoList`)
+- Session-cookie auth with fixation defence, and a repository that writes users
+
+## Three things that will bite you
+
+- **A nested component still has to be registered.** `renderComponent()` builds
+  it directly, but its action token names the class and is resolved through the
+  registry when pressed — so an unregistered one answers 404.
+- **`Component::validate()` returns an `ErrorBag`; it does not throw.** Wrapping
+  it in `try { … } catch (ValidationException)` silently lets invalid input
+  reach the database.
+- **The app image bakes the framework into `vendor/`.** After editing
+  `../principle/src`, run `docker compose build app` — the symlink that makes
+  local editing free does not apply inside the image.
 
 ## Conventions
 
 - `App\` namespace under `src/`, PSR-4.
 - Components extend `IamAdty\Empira\Component` and return an `Element`.
+- An action **returns void**; it responds by mutating props and the response.
 - `php bin/empira make:component Name` writes to `src/components/` and prints the
   `registry()->alias()` line you must then add.
-- **A component that is not registered cannot be reached.** The alias line is not
-  optional.
 
 ## Testing
 
-`tests/AppTest.php` drives the app the way htmx would — render the page, extract
-the signed URL from its own markup, post to it, assert on the fragment.
-
-It boots with `App::boot()` and the app's **real** state store. That matters:
-`TodoList` is stateful and needs a store that survives between requests. Under
-the CLI `SessionState` falls back to an in-process array, which is exactly what
-makes the round trip work.
+`tests/AppTest.php` drives the app the way htmx would — render the page,
+extract the signed URL from its own markup, post to it, assert on the response.
 
 ```php
 protected function setUp(): void
 {
-    $_SESSION = [];      // isolate tests from each other
+    $_SESSION = [];   // isolate sessions
+
+    $_ENV['DB_DATABASE'] = self::$database;   // shared, see below
 }
 ```
 
-Do not swap in `NullState` — two todo tests fail, because it persists nothing.
+**One database per test class, not per test.** Booting seeds a user, and hashing
+one with bcrypt costs about half a second; a fresh file per test turned a 0.07s
+suite into 22s. Sharing it is safe because every test signs in as itself and
+uses an address generated for that test. The file is created per *run*, so
+nothing leaks between runs.
 
 ## Before committing
 
@@ -114,17 +137,28 @@ Routes that are not pages — no layout, no markup — go in
 the thing that draws it belong in one file; the registrar is for everything
 else, where the route is not a page and should not pretend to be one.
 
-## The database, and the guard that is not authentication
+## The database
 
-`App::boot()` calls `$app->database()`, migrates, and seeds one user. It uses
+`App::boot()` calls `$app->database()`, migrates, and seeds one user. It reads
 `DB_*` from the environment, defaulting to a SQLite file in `storage/`, so
 `composer serve` needs no services.
 
-`src/Auth/DemoGuard.php` signs in **whoever names a user id in a query string**.
-That is fine for a demonstration and catastrophic anywhere else. It exists so the
-wiring — `$app->auth()`, `RequireAuth`, the guard resolving a `User` — can be
-seen working without inventing a login. There is no password in this app for
-exactly that reason. **Replace it before copying anything here.**
+Migration and seed run on **boot**, which is a demo convenience and not a thing
+to copy: a real application migrates as a deploy step. The seeder is idempotent
+because booting twice must not fail on the unique index.
+
+A seeded account, so there is something to sign in as:
+
+```
+ada@example.com  /  correct horse battery staple
+```
+
+## Account switching is closed on purpose
+
+`RedirectIfAuthenticated` turns a signed-in visitor away from `/login` and
+`/register`, so the only way to become a different user is to sign out first.
+That is deliberate — the absence of this middleware is not an oversight, and
+neither is the absence of a "switch account" link.
 
 ## Running it
 
