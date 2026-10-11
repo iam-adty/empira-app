@@ -5,12 +5,6 @@ declare(strict_types=1);
 namespace App;
 
 use App\Auth\UserRepository;
-use App\Components\LoginForm;
-use App\Components\LogoutButton;
-use App\Components\NavBar;
-use App\Components\RegisterForm;
-use App\Components\UserCard;
-use App\Components\Widget;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\DatabaseUserProvider;
 use IamAdty\Empira\Auth\SessionGuard;
@@ -40,18 +34,16 @@ final class App
             csrf: $csrf ? new Csrf() : null,
         );
 
-        // A token may only name a class the registry knows, so components are
-        // registered here rather than discovered.
-        $app->registry()
-            ->alias('navbar', NavBar::class)
-            // Registered even though nothing renders it directly: NavBar nests
-            // it, and a nested component's action token is still resolved
-            // through the registry when the action fires.
-            ->alias('logout', LogoutButton::class)
-            ->alias('login', LoginForm::class)
-            ->alias('register', RegisterForm::class)
-            ->alias('user', UserCard::class)
-            ->alias('widget', Widget::class);
+        // A token may only resolve a reachable class, and reachability is a
+        // namespace rather than a list: every component under `App\` answers its
+        // own action URLs without anyone having named it here. That is what makes
+        // nesting free — a component rendered only by another one used to have
+        // to be registered too, and the only symptom was a 404 when somebody
+        // pressed its button.
+        //
+        // `registry()->alias()` still exists, for a component whose token should
+        // be short or survive the class moving namespaces.
+        $app->components(__NAMESPACE__ . '\\');
 
         // A SQLite file by default, so `composer serve` needs no services. The
         // Docker compose overrides these through the environment.
