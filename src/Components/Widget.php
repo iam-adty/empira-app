@@ -7,6 +7,7 @@ namespace App\Components;
 use IamAdty\Empira\Component;
 use IamAdty\Empira\Element;
 use IamAdty\Empira\Raw;
+use IamAdty\Empira\StyleOrder;
 
 /**
  * An embeddable block with its own chrome.
@@ -22,6 +23,14 @@ use IamAdty\Empira\Raw;
  */
 final class Widget extends Component
 {
+    protected function aggregateStyles(): ?StyleOrder
+    {
+        // This component and the UserCard it wraps arrive and leave together, so
+        // their rules belong in one sheet at the top rather than one per element
+        // inside the other.
+        return StyleOrder::SelfLast;
+    }
+
     protected function styles(): Raw
     {
         return Raw::of('.widget { border: 1px solid var(--line); border-radius: .6rem; background: var(--surface); padding: 1.25rem; }
