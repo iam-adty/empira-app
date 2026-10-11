@@ -14,6 +14,11 @@ use IamAdty\Empira\Data\Migrator;
 use IamAdty\Empira\Security\Csrf;
 use IamAdty\Empira\State\SessionState;
 use IamAdty\Empira\State\StateStore;
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Handler\StreamHandler;
+use Monolog\Level;
+use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 
 /**
  * The application's wiring, in one place so `public/index.php` and the test
@@ -66,6 +71,12 @@ final class App
         // Routes that are not pages: no layout, registered deliberately.
         $app->registrar(Routing\AppRoutes::class);
 
+        // Where anything the framework or the app has to record goes. Before this
+        // the framework logged nothing at all, so a genuine bug was re-thrown
+        // into whatever PHP had configured for error output — which is usually
+        // nothing.
+        $app->log(self::logger());
+
         // Pages: every `#[Route]` under `src/`. Ordering is by specificity, so
         // `/register` is matched before `/r/{anything}` should one ever exist.
         $app->discover(__DIR__, __NAMESPACE__);
@@ -78,6 +89,51 @@ final class App
         ));
 
         return $app;
+    }
+
+    /**
+     * A Monolog logger writing JSON to stderr.
+     *
+     * stderr rather than a file, because a container has nowhere to keep a log
+     * across a restart and `docker compose logs` is where anybody actually
+     * looks. JSON rather than Monolog's default line format, because these lines
+     * are meant to be read by something: `jq` over a stream of records beats
+     * grepping a stack trace out of prose.
+     *
+     * Nothing here catches its own failure. A logger that dies mid-write is a
+     * smaller problem than the 500 it caused, and `Application::logFailure()`
+     * already refuses to let a broken logger replace the exception it was
+     * recording.
+     */
+    private static function logger(): LoggerInterface
+    {
+        $handler = new StreamHandler(
+            $_ENV['LOG_STREAM'] ?? 'php://stderr',
+            self::logLevel(),
+            bubble: true,
+        );
+
+        $handler->setFormatter(new JsonFormatter(JsonFormatter::BATCH_MODE_JSON, appendNewline: true));
+
+        return new Logger('app', [$handler]);
+    }
+
+    /**
+     * The configured level, falling back rather than refusing to boot.
+     *
+     * `Level::fromName()` throws on anything it does not recognise, so a typo
+     * in LOG_LEVEL would otherwise take the whole application down at boot —
+     * and a typo in an environment variable is exactly the sort of thing that
+     * should not be able to stop a deploy. An unrecognised level logs
+     * everything instead: too much beats not starting.
+     */
+    private static function logLevel(): Level
+    {
+        try {
+            return Level::fromName(strtolower((string) ($_ENV['LOG_LEVEL'] ?? 'info')));
+        } catch (\UnhandledMatchError) {
+            return Level::Debug;
+        }
     }
 
     /**

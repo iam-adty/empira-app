@@ -148,6 +148,75 @@ final class AppTest extends TestCase
         $this->assertSame('{"ok":true}', $this->get($app, '/healthz')->body());
     }
 
+    public function testAGenuineBugIsRecordedOnStderrBeforeItIsRethrown(): void
+    {
+        // What a broken component does. It is re-thrown by design, so this is
+        // the path a worker has to report on; the question is whether anything
+        // was written down first, and before this there was not.
+        $stderr = $this->captureLog(static function (Application $app): void {
+            $app->fallback(static function (): string {
+                throw new \LogicException('a deliberate bug');
+            });
+
+            try {
+                $app->handle(new Request('GET', '/boom'));
+            } catch (\LogicException) {
+                // expected — the framework re-throws a bug on purpose
+            }
+        });
+
+        $this->assertNotEmpty($stderr, 'nothing was written to the log');
+
+        $record = json_decode(trim($stderr), true);
+
+        // Asserted on the decoded record rather than the raw line, so this
+        // fails if the format drifts instead of quietly matching a substring.
+        $this->assertSame('ERROR', $record['level_name']);
+        $this->assertSame('a deliberate bug', $record['message']);
+        $this->assertSame('LogicException', $record['context']['exception']['class']);
+        $this->assertSame('GET', $record['context']['method']);
+        $this->assertSame('/boom', $record['context']['path']);
+    }
+
+    public function testAnOrdinaryRequestLogsNothing(): void
+    {
+        // A log line per request would bury the failures worth reading.
+        $stderr = $this->captureLog(static function (Application $app): void {
+            $app->handle(new Request('GET', '/'));
+        });
+
+        $this->assertSame('', trim($stderr));
+    }
+
+    /**
+     * Boot the application against a log file the test can read, and hand back
+     * what landed in it.
+     *
+     * `LOG_STREAM` has to be set *before* `App::boot()`, because that is when
+     * the handler is built — the level and the stream are read once, at boot,
+     * and a logger cannot be re-pointed afterwards.
+     *
+     * @param callable(Application): void $then
+     */
+    private function captureLog(callable $then): string
+    {
+        $path = dirname(__DIR__, 2) . '/tmp/app-test-log.json';
+        $previous = $_ENV['LOG_STREAM'] ?? null;
+        $_ENV['LOG_STREAM'] = $path;
+
+        try {
+            $then(App::boot());
+
+            // Monolog opens the stream lazily, so a file that was never
+            // created is the strongest possible statement that nothing was
+            // logged — there was no line to read, not merely an empty one.
+            return is_file($path) ? (string) file_get_contents($path) : '';
+        } finally {
+            $_ENV['LOG_STREAM'] = $previous;
+            @unlink($path);
+        }
+    }
+
     public function testUnknownRoutes404(): void
     {
         [$app] = $this->app();

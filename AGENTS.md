@@ -9,7 +9,7 @@ wire this up?" has an answer you can read in one sitting.
 ## Commands
 
 ```bash
-composer test                       # 24 tests, 76 assertions
+composer test                       # 26 tests, 83 assertions
 composer serve                      # http://localhost:8000
 vendor/bin/empira serve             # the framework's console, same thing
 composer validate                   # must stay clean
@@ -113,9 +113,11 @@ If you do not see a change, check that symlink first; do not reinstall.
   only guards against a hang that `docker compose up --wait` and the healthcheck
   already surface loudly. Do not add one without a failure it would actually
   catch.
-- **`emit()`, never `send()`.** `send()` exits, which takes the worker down and
-  earns you one request per process. `public/index.php` uses `emit()` for
-  exactly this reason.
+- **`respond()` in the worker loop, `send()` in classic mode.** `send()` exits,
+  which takes the worker down and earns you one request per process.
+  `public/index.php` branches on `APP_RUNTIME` for exactly that reason: worker
+  mode calls `respond()`, which emits and returns, and classic mode calls
+  `send()`, which exits because there is nothing to come back to.
 
 ## Conventions
 
