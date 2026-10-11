@@ -6,6 +6,7 @@ namespace App\Tests;
 
 use App\App;
 use App\Auth\UserRepository;
+use App\RateLimit\RateLimiter;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\User;
 use IamAdty\Empira\Config\DatabaseConfig;
@@ -116,11 +117,29 @@ final class AppTest extends TestCase
 
         $_ENV['DB_DRIVER'] = 'sqlite';
         $_ENV['DB_DATABASE'] = self::$database;
+
+        // Both limits are raised out of the way by default. This suite shares
+        // one database, and several tests exist precisely to fail Ada's password
+        // — so the default would have their own failures accumulate and lock her
+        // out of every test that runs later, and the suite would pass or fail
+        // depending on order. The lockout tests below lower a limit deliberately.
+        $_ENV['RATE_LIMIT_LOGIN_IP'] = '10000';
+        $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '10000';
     }
 
     protected function tearDown(): void
     {
         unset($_ENV['DB_DRIVER'], $_ENV['DB_DATABASE']);
+
+        // Cleared here rather than at the end of each test body, because a test
+        // that fails on an assertion never reaches its own cleanup — and a
+        // leaked RATE_LIMIT_LOGIN_EMAIL of "2" would silently lock Ada out of
+        // every test that follows.
+        unset(
+            $_ENV['RATE_LIMIT_LOGIN_EMAIL'],
+            $_ENV['RATE_LIMIT_LOGIN_IP'],
+            $_ENV['RATE_LIMIT_WINDOW'],
+        );
     }
 
     /**
@@ -570,6 +589,201 @@ final class AppTest extends TestCase
         );
 
         $this->assertStringNotContainsString('hunter2-wrong', $response->body());
+    }
+
+    // -------------------------------------------------- what the log records
+
+    public function testTheLogSaysWhyASignInFailedWhenTheVisitorCannotBeTold(): void
+    {
+        // One message for the visitor, three distinguishable reasons for us. This
+        // is the only way to answer "was this one person struggling, or many?"
+        // — which a log recording merely "did not match" cannot.
+        $unknown = $this->captureLog(function (Application $app): void {
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => $this->uniqueEmail(),
+                'password' => 'whatever',
+            ]);
+        });
+
+        self::assertStringContainsString('login failed: no such user', $unknown);
+        self::assertStringContainsString('"level_name":"WARNING"', $unknown);
+
+        // The password is never logged, on either branch.
+        $wrong = $this->captureLog(function (Application $app): void {
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => 'ada@example.com',
+                'password' => 'hunter2-wrong',
+            ]);
+        });
+
+        self::assertStringContainsString('login failed: password did not match', $wrong);
+        self::assertStringNotContainsString('hunter2-wrong', $wrong);
+    }
+
+    // ------------------------------------------------------ being shut out
+
+    public function testTooManyFailuresShutTheAccountOutAndThenLetItExpire(): void
+    {
+        $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '3';
+        $_ENV['RATE_LIMIT_WINDOW'] = '900';
+
+        [$app] = $this->app();
+        $email = 'ada@example.com';
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => $email,
+                'password' => 'wrong',
+            ]);
+        }
+
+        // The fourth is refused *before the password is checked*, so it is refused
+        // whatever the password was.
+        //
+        // Asserted on the log rather than on the response, because the response
+        // is the same one message either way — a test that watched the body
+        // would pass with the limiter switched off entirely, which is precisely
+        // the test that was supposed to prove it works.
+        $blocked = $this->captureLog(function (Application $app) use ($email): void {
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => $email,
+                'password' => 'correct horse battery staple',
+            ]);
+        });
+
+        self::assertStringContainsString('login blocked: rate limited', $blocked);
+        self::assertStringNotContainsString('password did not match', $blocked);
+
+        // …and the window really reopens, rather than staying blocked until
+        // something resets it. Forced by leaving a row whose window closed in
+        // the past, because waiting fifteen minutes is not a test.
+        //
+        // Cleared first, then recorded with an old timestamp: `record()` resets
+        // only when the timestamp *it* is given is past the window, so recording
+        // in the past on top of a live row would increment it rather than age
+        // it.
+        $key = RateLimiter::key('login:email', $email);
+        $limiter = $this->rateLimiter($app);
+        $limiter->clear($key);
+        $limiter->record($key, 900, time() - 901);
+
+        $this->signIn($app);
+
+        self::assertStringContainsString(
+            'Ada Lovelace',
+            $this->get($app, '/dashboard')->body(),
+            'the lockout should have expired'
+        );
+    }
+
+    public function testASuccessfulSignInForgetsTheFailures(): void
+    {
+        $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '3';
+
+        [$app] = $this->app();
+        $email = 'ada@example.com';
+        $limiter = $this->rateLimiter($app);
+
+        for ($i = 0; $i < 2; $i++) {
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => $email,
+                'password' => 'wrong',
+            ]);
+        }
+
+        $this->signIn($app);
+
+        // Without this the limiter punishes correct passwords: three honest
+        // sign-ins in a quarter hour would lock somebody out of their own
+        // account, and the only way to discover that would be to be that person.
+        self::assertFalse($limiter->isBlocked(RateLimiter::key('login:email', $email), 3, 900));
+
+        unset($_ENV['RATE_LIMIT_LOGIN_EMAIL']);
+    }
+
+    public function testAShutOutSwapReRendersTheFormRatherThanAnsweringWithABareStatus(): void
+    {
+        $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '1';
+
+        [$app] = $this->app();
+
+        $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+            'email' => 'ada@example.com',
+            'password' => 'wrong',
+        ]);
+
+        // htmx: the swap target is the form, so a bare status body would land in
+        // the middle of somebody's page.
+        //
+        // The log is asserted alongside the body, because the body alone is
+        // identical whether the request was refused or merely got the password
+        // wrong — and a swap test that watched only the body would pass with the
+        // limiter disabled.
+        [$response, $logged] = $this->captureLogPair(function (Application $app): \IamAdty\Empira\Http\Response {
+            return $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => 'ada@example.com',
+                'password' => 'anything',
+            ]);
+        });
+
+        self::assertStringContainsString('login blocked: rate limited', $logged);
+        self::assertSame(200, $response->status());
+        self::assertStringContainsString('class="card auth-form"', $response->body());
+        self::assertSame(
+            'Those credentials did not match any account.',
+            $this->messageIn($response->body()),
+            'a refused swap must not say "too many attempts"'
+        );
+    }
+
+    /**
+     * Run something and hand back both what it returned and what it logged.
+     *
+     * Two things at once, because most of what matters here is the difference
+     * between them: a response that says the right thing while the log says
+     * nothing, and a log that says the right thing while the response does not.
+     *
+     * @template T
+     *
+     * @param callable(Application): T $then
+     *
+     * @return array{T, string}
+     */
+    private function captureLogPair(callable $then): array
+    {
+        $result = null;
+        $logged = $this->captureLog(static function (Application $app) use ($then, &$result): void {
+            $result = $then($app);
+        });
+
+        return [$result, $logged];
+    }
+
+    public function testAShutOutPlainRequestAnswers429WithRetryAfter(): void
+    {
+        $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '1';
+
+        [$app] = $this->app();
+        $this->rateLimiter($app)->record(RateLimiter::key('login:email', 'ada@example.com'), 900);
+
+        // Not a swap: a scripted POST or a link, which gets the protocol's answer
+        // rather than a fragment of somebody's form.
+        $response = $app->handle(new Request(
+            'POST',
+            $this->actionUrl($this->get($app, '/login')->body(), 'login', 'post'),
+            body: ['email' => 'ada@example.com', 'password' => 'correct horse battery staple'],
+            headers: ['X-CSRF-Token' => $app->csrf()?->token() ?? ''],
+        ));
+
+        self::assertSame(429, $response->status());
+        self::assertSame('900', $response->headers()['Retry-After'] ?? null);
+
+        unset($_ENV['RATE_LIMIT_LOGIN_EMAIL']);
+    }
+
+    private function rateLimiter(Application $app): RateLimiter
+    {
+        return $app->container()->get(RateLimiter::class);
     }
 
     public function testSigningInWithTheRightCredentialsRedirectsToTheDashboard(): void
