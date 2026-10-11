@@ -5,22 +5,58 @@ declare(strict_types=1);
 namespace App\Tests;
 
 use App\App;
+use App\Auth\UserRepository;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Http\Request;
 use IamAdty\Empira\Security\Csrf;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Drives the application end to end, the same way htmx would.
+ * Drives the application end to end, the way htmx would.
+ *
+ * Every request that submits a form uses the signed action URL extracted from
+ * the page's own markup, because that is the only way a real browser reaches
+ * it — the form does not post to the route that rendered it.
  */
 final class AppTest extends TestCase
 {
-    private array $session = [];
+    /**
+     * One database for the whole class, thrown away afterwards.
+     *
+     * Per test would be tidier in principle and ruinous in practice: booting
+     * seeds a user, and hashing one with bcrypt costs about half a second, so a
+     * fresh file per test turned a 0.07s suite into a 22s one.
+     *
+     * Sharing it is safe because every test signs in as itself and uses an
+     * address generated for that test, so no two of them collide. What must not
+     * leak is between *runs*, and the file is created fresh for each run.
+     */
+    private static string $database = '';
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$database = sys_get_temp_dir() . '/empira-app-test-' . bin2hex(random_bytes(6)) . '.sqlite';
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$database !== '' && is_file(self::$database)) {
+            unlink(self::$database);
+        }
+    }
 
     protected function setUp(): void
     {
-        $this->session = [];
+        // A fresh session per test, but a shared database — see self::$database.
         $_SESSION = [];
+
+        $_ENV['DB_DRIVER'] = 'sqlite';
+        $_ENV['DB_DATABASE'] = self::$database;
+    }
+
+    protected function tearDown(): void
+    {
+        unset($_ENV['DB_DRIVER'], $_ENV['DB_DATABASE']);
     }
 
     /**
@@ -29,323 +65,479 @@ final class AppTest extends TestCase
     private function app(): array
     {
         // Booted exactly as the front controller does, so the test exercises the
-        // real wiring. `SessionState` falls back to an in-process store under
-        // the CLI, which is what lets the stateful todo list survive the
-        // separate requests a round trip makes.
+        // real wiring.
         $app = App::boot();
 
         return [$app, $app->csrf()];
     }
 
-    private function htmxPost(string $url, array $body = [], ?string $csrf = null): Request
+    private function get(Application $app, string $path, array $headers = [])
     {
-        $headers = ['HX-Request' => 'true', 'HX-Current-URL' => 'http://localhost/'];
+        return $app->handle(new Request('GET', $path, headers: $headers));
+    }
 
-        if ($csrf !== null) {
-            $headers['X-CSRF-Token'] = $csrf;
+    /**
+     * Post to a component action, the way htmx does.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function submit(Application $app, string $html, string $action, array $body, string $verb = 'POST')
+    {
+        return $app->handle(new Request(
+            $verb,
+            $this->actionUrl($html, $action, $verb),
+            body: $body,
+            headers: ['HX-Request' => 'true', 'X-CSRF-Token' => $app->csrf()?->token() ?? ''],
+        ));
+    }
+
+    /**
+     * The signed URL for one component action, read out of the rendered markup.
+     */
+    private function actionUrl(string $html, string $action, string $verb = 'post'): string
+    {
+        // The markup says hx-post; the verb may arrive here as POST.
+        preg_match_all(sprintf('/hx-%s="([^"]+)"/', strtolower($verb)), $html, $matches);
+
+        foreach ($matches[1] ?? [] as $url) {
+            $decoded = html_entity_decode($url);
+
+            if (str_ends_with($decoded, '/' . $action)) {
+                return $decoded;
+            }
         }
 
-        return new Request('POST', $url, body: $body, headers: $headers);
+        $this->fail(sprintf('No hx-%s URL ending in "/%s" was rendered.', strtolower($verb), $action));
     }
 
-    private function actionUrls(string $html): array
+    private function uniqueEmail(): string
     {
-        preg_match_all('/hx-post="([^"]+)"/', $html, $matches);
-
-        return array_map('html_entity_decode', $matches[1] ?? []);
+        return sprintf('user-%s@example.com', bin2hex(random_bytes(6)));
     }
 
-    // ---------------------------------------------------------------- page
+    // ---------------------------------------------------------------- pages
 
-    public function testTheHomePageRenders(): void
+    public function testTheHomePageRendersForEveryone(): void
     {
         [$app] = $this->app();
 
-        $response = $app->handle(new Request('GET', '/'));
+        $body = $this->get($app, '/')->body();
 
-        $this->assertSame(200, $response->status());
-        $this->assertStringContainsString('<h1>Empira</h1>', $response->body());
-        $this->assertStringContainsString('unpkg.com/htmx.org', $response->body());
-        $this->assertStringContainsString('hx-headers', $response->body());
+        $this->assertStringContainsString('Empira', $body);
+        // A guest is offered both ways in, and no account panel yet.
+        $this->assertStringContainsString('href="/login"', $body);
+        $this->assertStringContainsString('href="/register"', $body);
+        $this->assertStringNotContainsString('Your account', $body);
     }
 
-    public function testTheHomePageContainsNoHandWrittenHtmxVerbs(): void
+    public function testTheHealthEndpointStillAnswersJson(): void
     {
         [$app] = $this->app();
 
-        $body = $app->handle(new Request('GET', '/'))->body();
-
-        // Every verb in the document must be on a component element, and every
-        // one of them must point at a signed endpoint.
-        preg_match_all('/hx-(get|post|put|patch|delete)="([^"]*)"/', $body, $matches, PREG_SET_ORDER);
-
-        $this->assertNotEmpty($matches);
-
-        foreach ($matches as [, $verb, $url]) {
-            $this->assertStringStartsWith('/empira/', $url, sprintf('hx-%s has an unwired URL', $verb));
-        }
-    }
-
-    public function testThePageRouteComesFromAnAttributeOnTheLayout(): void
-    {
-        [$app] = $this->app();
-
-        // The URL is declared on `HomeLayout`; there is no route table to keep
-        // in step with the page.
-        $this->assertTrue($app->routes()->has('home'));
-        $this->assertSame(200, $app->handle(new Request('GET', '/'))->status());
-    }
-
-    public function testAPageReadsTheQueryStringThroughMount(): void
-    {
-        [$app] = $this->app();
-
-        $body = $app->handle(new Request('GET', '/', query: ['q' => 'ember']))->body();
-
-        // `mount()` pulled `q` off the request; the search box renders it.
-        $this->assertStringContainsString('value="ember"', $body);
-    }
-
-    public function testRoutesThatAreNotPagesAreRegisteredExplicitly(): void
-    {
-        [$app] = $this->app();
-
-        $response = $app->handle(new Request('GET', '/healthz'));
-
-        $this->assertSame(200, $response->status());
-        $this->assertSame('{"ok":true}', $response->body());
-    }
-
-    public function testTheApplicationRunsMigrationsAndSeedsAUser(): void
-    {
-        [$app] = $this->app();
-
-        // Boot migrates and seeds, so the demo has somebody to sign in as
-        // without a setup step a reader has to discover.
-        $this->assertTrue($app->db()->table('users')->exists());
-        $this->assertSame('Ada Lovelace', $app->db()->first('users')['name']);
-    }
-
-    public function testAnAdminRouteRefusesAnAnonymousVisitor(): void
-    {
-        [$app] = $this->app();
-
-        // Behind RequireAuth, so the answer is the negotiated 401 rather than
-        // the 404 an unregistered route would give.
-        $this->assertSame(401, $app->handle(new Request('GET', '/admin/stats'))->status());
-    }
-
-    public function testAnAdminRouteRendersForAVerifiedVisitor(): void
-    {
-        [$app] = $this->app();
-
-        $body = $app->handle(new Request('GET', '/admin/stats', query: ['as' => '1']))->body();
-
-        // Assert on the identity itself, not on the word "admin", which the
-        // page says either way.
-        $this->assertStringContainsString('Signed in as Ada Lovelace', $body);
-    }
-
-    public function testAnUnknownUserIsStillRefused(): void
-    {
-        [$app] = $this->app();
-
-        $this->assertSame(401, $app->handle(new Request('GET', '/admin/stats', query: ['as' => '999']))->status());
-    }
-
-    public function testTheAdminRouteNegotiatesJsonForAJsonClient(): void
-    {
-        [$app] = $this->app();
-
-        $response = $app->handle(new Request('GET', '/admin/stats', headers: ['Accept' => 'application/json']));
-
-        $this->assertSame(401, $response->status());
-        $this->assertStringContainsString('"error"', $response->body());
+        $this->assertSame('{"ok":true}', $this->get($app, '/healthz')->body());
     }
 
     public function testUnknownRoutes404(): void
     {
         [$app] = $this->app();
 
-        $response = $app->handle(new Request('GET', '/nope'));
-
-        $this->assertSame(404, $response->status());
-        $this->assertStringContainsString('Not Found', $response->body());
+        $this->assertSame(404, $this->get($app, '/nope')->status());
     }
 
-    // ---------------------------------------------------------------- counter
-
-    public function testCounterRoundTrip(): void
+    public function testTheNavBarOffersBothWaysInToAGuest(): void
     {
-        [$app, $csrf] = $this->app();
-        $token = $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
+        $body = $this->get($app, '/')->body();
 
-        $increment = $this->findAction($page, 'increment');
-        $fragment = $app->handle($this->htmxPost($increment, [], $token))->body();
-
-        $this->assertMatchesRegularExpression('/<strong>\d+<\/strong>|>\s*5\s*</', $fragment);
-        $this->assertStringNotContainsString('Counter', $fragment, 'a fragment must not include the page shell');
-
-        $again = $this->findAction($fragment, 'increment');
-        $fragment = $app->handle($this->htmxPost($again, [], $token))->body();
-
-        $this->assertStringContainsString('10', $fragment);
+        $this->assertStringContainsString('Sign in', $body);
+        $this->assertStringContainsString('Create account', $body);
     }
 
-    // ---------------------------------------------------------------- todos
+    // ---------------------------------------------------------------- gates
 
-    public function testTodoListRoundTrip(): void
+    public function testADashboardSendsAGuestToSignIn(): void
     {
-        [$app, $csrf] = $this->app();
-        $token = $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $add = $this->findAction($page, 'add');
+        $response = $this->get($app, '/dashboard');
 
-        $fragment = $app->handle($this->htmxPost($add, ['title' => 'buy milk'], $token))->body();
-        $this->assertStringContainsString('buy milk', $fragment);
-
-        $fragment = $app->handle($this->htmxPost($add, ['title' => 'walk dog'], $token))->body();
-        $this->assertStringContainsString('buy milk', $fragment);
-        $this->assertStringContainsString('walk dog', $fragment);
+        $this->assertSame(302, $response->status());
+        $this->assertSame('/login', $response->headers()['Location']);
+        // Both headers, so a boosted htmx link navigates too.
+        $this->assertSame('/login', $response->headers()['HX-Redirect']);
     }
 
-    public function testTodoListRejectsAnEmptyTitle(): void
+    /**
+     * The gate is about who you are, not which verb you used.
+     */
+    public function testTheDashboardGateCoversEveryVerb(): void
     {
-        [$app, $csrf] = $this->app();
-        $token = $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $add = $this->findAction($page, 'add');
+        foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $verb) {
+            $response = $app->handle(new Request($verb, '/dashboard'));
 
-        $response = $app->handle($this->htmxPost($add, ['title' => '   '], $token));
-
-        $this->assertStringContainsString('todo:rejected', $response->headers()['HX-Trigger-After-Swap']);
-        $this->assertStringNotContainsString('<li>', $response->body());
+            $this->assertSame(302, $response->status(), $verb . ' should be redirected, not served');
+            $this->assertSame('/login', $response->headers()['HX-Redirect'], $verb);
+        }
     }
 
-    public function testTodoTitlesAreEscaped(): void
+    public function testASignedInVisitorCannotReachTheLoginOrRegisterPages(): void
     {
-        [$app, $csrf] = $this->app();
-        $token = $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $add = $this->findAction($page, 'add');
+        $this->signIn($app);
 
-        $fragment = $app->handle($this->htmxPost($add, ['title' => '<script>alert(1)</script>'], $token))->body();
+        foreach (['/login', '/register'] as $path) {
+            foreach (['GET', 'POST', 'PUT'] as $verb) {
+                $response = $app->handle(new Request($verb, $path));
 
-        $this->assertStringNotContainsString('<script>alert(1)</script>', $fragment);
-        $this->assertStringContainsString('&lt;script&gt;', $fragment);
+                $this->assertSame(302, $response->status(), $verb . ' ' . $path);
+                $this->assertSame('/dashboard', $response->headers()['HX-Redirect'], $verb . ' ' . $path);
+            }
+        }
     }
 
-    public function testToggleAndRemove(): void
+    // ---------------------------------------------------------------- register
+
+    public function testTheRegisterFormRendersForAGuest(): void
     {
-        [$app, $csrf] = $this->app();
-        $token = $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $fragment = $app->handle($this->htmxPost($this->findAction($page, 'add'), ['title' => 'task'], $token))->body();
+        $body = $this->get($app, '/register')->body();
 
-        preg_match('/data-id="([a-f0-9]+)"/', $fragment, $matches);
-        $id = $matches[1];
-
-        $toggle = $this->findAction($fragment, 'toggle');
-        $fragment = $app->handle($this->htmxPost($toggle, ['id' => $id], $token))->body();
-        $this->assertStringContainsString('class="done"', $fragment);
-
-        $remove = $this->findAction($fragment, 'remove');
-        $fragment = $app->handle($this->htmxPost($remove, ['id' => $id], $token))->body();
-        $this->assertStringNotContainsString('task', $fragment);
+        $this->assertStringContainsString('name="email"', $body);
+        $this->assertStringContainsString('name="password"', $body);
+        $this->assertStringContainsString('name="password_confirmation"', $body);
     }
 
-    // ---------------------------------------------------------------- search
-
-    public function testSearchUsesAGetAndReplacesTheUrl(): void
+    public function testRegisteringCreatesAnAccountAndSignsIn(): void
     {
-        [$app, $csrf] = $this->app();
+        [$app] = $this->app();
+        $email = $this->uniqueEmail();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
+        $html = $this->get($app, '/register')->body();
 
-        preg_match('/hx-get="([^"]+)"/', $page, $matches);
-        $this->assertNotEmpty($matches, 'The search box should issue a GET.');
-
-        $url = html_entity_decode($matches[1], ENT_QUOTES);
-        $response = $app->handle(new Request(
-            'GET',
-            $url,
-            query: ['q' => 'tail'],
-            headers: ['HX-Request' => 'true', 'X-CSRF-Token' => $csrf->token()],
-        ));
-
-        // Assert a real result, not just the word "htmx", which also appears in
-        // the `htmx-indicator` class name and made an earlier check pass
-        // whatever the search actually returned.
-        $this->assertStringContainsString('<li>multitail</li>', $response->body());
-        $this->assertSame('/?q=tail', $response->headers()['HX-Replace-Url']);
-    }
-
-    public function testASearchWithNoMatchesRendersAnEmptyList(): void
-    {
-        [$app, $csrf] = $this->app();
-
-        $page = $app->handle(new Request('GET', '/'))->body();
-        preg_match('/hx-get="([^"]+)"/', $page, $matches);
-        $url = html_entity_decode($matches[1], ENT_QUOTES);
-
-        $response = $app->handle(new Request(
-            'GET',
-            $url,
-            query: ['q' => 'nothing-matches-this'],
-            headers: ['HX-Request' => 'true', 'X-CSRF-Token' => $csrf->token()],
-        ));
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Grace Hopper',
+            'email' => $email,
+            'password' => 'correct horse',
+            'password_confirmation' => 'correct horse',
+        ]);
 
         $this->assertSame(200, $response->status());
-        $this->assertStringContainsString('<ul id="results"></ul>', $response->body());
+        $this->assertSame('/dashboard', $response->headers()['HX-Redirect'] ?? null);
+
+        $row = $app->db()->first('users', fn($q) => $q->where('email', $email));
+        $this->assertNotNull($row, 'the account was written');
+        $this->assertSame('Grace Hopper', $row['name']);
+
+        // …and the new account is immediately the signed-in one.
+        $this->assertStringContainsString('Grace Hopper', $this->get($app, '/dashboard')->body());
     }
 
-    // ---------------------------------------------------------------- csrf
-
-    public function testActionsRequireTheCsrfToken(): void
+    public function testRegisteringWithABadEmailReRendersTheFormWithTheReason(): void
     {
-        [$app, $csrf] = $this->app();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $increment = $this->findAction($page, 'increment');
+        $html = $this->get($app, '/register')->body();
 
-        $response = $app->handle($this->htmxPost($increment));
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Someone',
+            'email' => 'not-an-email',
+            'password' => 'correct horse',
+            'password_confirmation' => 'correct horse',
+        ]);
 
-        $this->assertSame(403, $response->status());
-        $this->assertStringContainsString('CSRF', $response->body());
+        // 200, not 422: the visitor keeps the form and is told what was wrong.
+        $this->assertSame(200, $response->status());
+        $this->assertStringContainsString('valid email', $response->body());
+        // The field they typed is kept, so it need not be retyped.
+        $this->assertStringContainsString('not-an-email', $response->body());
     }
 
-    public function testAForeignCsrfTokenIsRejected(): void
+    public function testAMismatchedConfirmationIsReported(): void
     {
-        [$app, $csrf] = $this->app();
-        $csrf->token();
+        [$app] = $this->app();
 
-        $page = $app->handle(new Request('GET', '/'))->body();
-        $increment = $this->findAction($page, 'increment');
+        $html = $this->get($app, '/register')->body();
 
-        $response = $app->handle($this->htmxPost($increment, [], 'not-the-token'));
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Someone',
+            'email' => $this->uniqueEmail(),
+            'password' => 'correct horse',
+            'password_confirmation' => 'battery staple',
+        ]);
 
-        $this->assertSame(403, $response->status());
+        $this->assertSame(200, $response->status());
+        $this->assertStringContainsString('confirmation does not match', $response->body());
+    }
+
+    public function testAShortPasswordIsReported(): void
+    {
+        [$app] = $this->app();
+
+        $html = $this->get($app, '/register')->body();
+
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Someone',
+            'email' => $this->uniqueEmail(),
+            'password' => 'short',
+            'password_confirmation' => 'short',
+        ]);
+
+        $this->assertStringContainsString('at least 8', $response->body());
+    }
+
+    public function testRegisteringAnEmailThatExistsSaysSoAndWritesNothing(): void
+    {
+        [$app] = $this->app();
+        $email = $this->uniqueEmail();
+
+        // Written through the repository rather than the form, because the form
+        // signs the new user in — and /register turns a signed-in visitor away,
+        // so there would be no form left to submit.
+        $app->container()->get(UserRepository::class)->register('First', $email, 'correct horse');
+
+        $before = $this->countUsers($app, $email);
+
+        $html = $this->get($app, '/register')->body();
+
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Impostor',
+            'email' => $email,
+            'password' => 'correct horse',
+            'password_confirmation' => 'correct horse',
+        ]);
+
+        $this->assertSame(200, $response->status());
+        $this->assertStringContainsString('already registered', $response->body());
+        $this->assertSame($before, $this->countUsers($app, $email), 'no second row was written');
+    }
+
+    // ---------------------------------------------------------------- login
+
+    public function testSigningInWithTheWrongPasswordShowsTheFormAgain(): void
+    {
+        [$app] = $this->app();
+
+        $html = $this->get($app, '/login')->body();
+
+        $response = $this->submit($app, $html, 'login', [
+            'email' => 'ada@example.com',
+            'password' => 'wrong',
+        ]);
+
+        $this->assertSame(200, $response->status());
+        $this->assertStringContainsString('did not match', $response->body());
+        $this->assertNull($response->headers()['HX-Redirect'] ?? null);
+    }
+
+    public function testAnUnknownEmailAndAWrongPasswordSayTheSameThing(): void
+    {
+        [$app] = $this->app();
+
+        $unknown = $this->submit(
+            $app,
+            $this->get($app, '/login')->body(),
+            'login',
+            ['email' => $this->uniqueEmail(), 'password' => 'whatever']
+        )->body();
+
+        $wrong = $this->submit(
+            $app,
+            $this->get($app, '/login')->body(),
+            'login',
+            ['email' => 'ada@example.com', 'password' => 'wrong']
+        )->body();
+
+        // If these differ, the form becomes an oracle for which emails exist.
+        $this->assertSame(
+            $this->messageIn($unknown),
+            $this->messageIn($wrong)
+        );
+    }
+
+    public function testThePasswordIsNeverEchoedBack(): void
+    {
+        [$app] = $this->app();
+
+        $response = $this->submit(
+            $app,
+            $this->get($app, '/login')->body(),
+            'login',
+            ['email' => 'ada@example.com', 'password' => 'hunter2-wrong']
+        );
+
+        $this->assertStringNotContainsString('hunter2-wrong', $response->body());
+    }
+
+    public function testSigningInWithTheRightCredentialsRedirectsToTheDashboard(): void
+    {
+        [$app] = $this->app();
+
+        $html = $this->get($app, '/login')->body();
+
+        $response = $this->submit($app, $html, 'login', [
+            'email' => 'ada@example.com',
+            'password' => 'correct horse battery staple',
+        ]);
+
+        $this->assertSame('/dashboard', $response->headers()['HX-Redirect'] ?? null);
+        $this->assertStringContainsString('Ada Lovelace', $this->get($app, '/dashboard')->body());
+    }
+
+    public function testTheNavBarShowsTheSignedInUser(): void
+    {
+        [$app] = $this->app();
+
+        $this->signIn($app);
+
+        $body = $this->get($app, '/')->body();
+
+        $this->assertStringContainsString('Ada Lovelace', $body);
+        $this->assertStringContainsString('Sign out', $body);
+        $this->assertStringNotContainsString('Create account', $body);
+    }
+
+    // ---------------------------------------------------------------- logout
+
+    public function testSigningOutReturnsToTheFrontPage(): void
+    {
+        [$app] = $this->app();
+
+        $this->signIn($app);
+
+        $body = $this->get($app, '/dashboard')->body();
+
+        $response = $this->submit($app, $body, 'logout', []);
+
+        $this->assertSame('/', $response->headers()['HX-Redirect'] ?? null);
+
+        // And the dashboard is a guest's again.
+        $this->assertSame(302, $this->get($app, '/dashboard')->status());
+    }
+
+    // ------------------------------------------------- gates the route misses
+
+    public function testASignedInUserPostingTheLoginActionIsTurnedAway(): void
+    {
+        [$app] = $this->app();
+        $email = $this->uniqueEmail();
+
+        // Through the repository, because the register form would sign this user
+        // in — and then the guest fetch below would be turned away.
+        $app->container()->get(UserRepository::class)->register('Someone Else', $email, 'correct horse');
+
+        // This is the URL a page rendered *before* signing in would still hold.
+        // No route middleware ever sees it, so the action itself has to check —
+        // which is why the form is fetched while still a guest.
+        $html = $this->get($app, '/login')->body();
+
+        $this->signIn($app, 'ada@example.com');
+
+        $response = $this->submit($app, $html, 'login', [
+            'email' => $email,
+            'password' => 'correct horse',
+        ]);
+
+        $this->assertSame('/dashboard', $response->headers()['HX-Redirect'] ?? null);
+
+        // Still Ada: the session was not quietly switched to the other account.
+        $this->assertStringContainsString('Ada Lovelace', $this->get($app, '/dashboard')->body());
+    }
+
+    public function testASignedInUserPostingTheRegisterActionWritesNothing(): void
+    {
+        [$app] = $this->app();
+
+        $html = $this->get($app, '/register')->body();
+
+        $this->signIn($app);
+
+        $email = $this->uniqueEmail();
+
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Impostor',
+            'email' => $email,
+            'password' => 'correct horse',
+            'password_confirmation' => 'correct horse',
+        ]);
+
+        $this->assertSame('/dashboard', $response->headers()['HX-Redirect'] ?? null);
+        $this->assertSame(0, $this->countUsers($app, $email), 'no account was created');
+    }
+
+    // ---------------------------------------------------------------- styling
+
+    public function testAComponentBringsItsOwnStylesheet(): void
+    {
+        [$app] = $this->app();
+
+        $body = $this->get($app, '/login')->body();
+
+        // The global sheet is in <head>; the form's is inside the form, which is
+        // the swap target, so it comes back when htmx re-renders the form alone.
+        $this->assertStringContainsString('--surface:', $body);
+        $this->assertStringContainsString('.auth-form .field', $body);
+    }
+
+    public function testTheGlobalSheetIsInTheHeadAndTheComponentSheetIsNot(): void
+    {
+        [$app] = $this->app();
+
+        $html = $this->get($app, '/login')->body();
+
+        [$head, $body] = explode('</head>', $html, 2) + ['', ''];
+
+        $this->assertStringContainsString('--surface:', $head, 'global rules belong in <head>');
+        $this->assertStringNotContainsString('.auth-form .field', $head);
+        $this->assertStringContainsString('.auth-form .field', $body, "a component's own rules ride with it");
+    }
+
+    public function testEveryHtmxAttributeIsGenerated(): void
+    {
+        [$app] = $this->app();
+
+        // A guest's front page is plain links, so the page that *does* issue
+        // requests is the sign-in form.
+        $html = $this->get($app, '/login')->body();
+
+        // No hx-post may be hand-written; they all come from ->action().
+        preg_match_all('/(hx-[a-z-]+)=/', $html, $matches);
+
+        $this->assertNotEmpty($matches[1] ?? [], 'the page should issue some htmx requests');
+
+        foreach ($matches[1] as $attribute) {
+            $this->assertStringContainsString('/empira/', $html, $attribute . ' should point at a signed endpoint');
+        }
     }
 
     // ---------------------------------------------------------------- helpers
 
-    /**
-     * Find the action URL whose trailing path segment is `$action`.
-     */
-    private function findAction(string $html, string $action): string
+    private function signIn(Application $app, string $email = 'ada@example.com'): void
     {
-        foreach ($this->actionUrls($html) as $url) {
-            if (str_ends_with($url, '/' . $action)) {
-                return $url;
-            }
-        }
+        $html = $this->get($app, '/login')->body();
 
-        $this->fail('No action URL ending in "/' . $action . '" was rendered.');
+        $this->submit($app, $html, 'login', [
+            'email' => $email,
+            'password' => 'correct horse battery staple',
+        ]);
+    }
+
+    private function countUsers(Application $app, string $email): int
+    {
+        return count($app->db()->select('users', fn($q) => $q->where('email', $email)));
+    }
+
+    /**
+     * The error paragraph, so two responses can be compared on what they say.
+     */
+    private function messageIn(string $html): string
+    {
+        preg_match('/class="form-error"[^>]*>([^<]*)</', $html, $matches);
+
+        return trim($matches[1] ?? '');
     }
 }

@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App;
 
 use App\Auth\DemoGuard;
-use App\Components\Counter;
-use App\Components\SearchBox;
-use App\Components\TodoList;
+use App\Auth\UserRepository;
+use App\Components\LoginForm;
+use App\Components\LogoutButton;
+use App\Components\NavBar;
+use App\Components\RegisterForm;
+use App\Components\UserCard;
+use App\Components\Widget;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\DatabaseUserProvider;
+use IamAdty\Empira\Auth\SessionGuard;
 use IamAdty\Empira\Config\Env;
 use IamAdty\Empira\Data\Migrator;
 use IamAdty\Empira\Security\Csrf;
@@ -38,9 +43,15 @@ final class App
         // A token may only name a class the registry knows, so components are
         // registered here rather than discovered.
         $app->registry()
-            ->alias('counter', Counter::class)
-            ->alias('todos', TodoList::class)
-            ->alias('search', SearchBox::class);
+            ->alias('navbar', NavBar::class)
+            // Registered even though nothing renders it directly: NavBar nests
+            // it, and a nested component's action token is still resolved
+            // through the registry when the action fires.
+            ->alias('logout', LogoutButton::class)
+            ->alias('login', LoginForm::class)
+            ->alias('register', RegisterForm::class)
+            ->alias('user', UserCard::class)
+            ->alias('widget', Widget::class);
 
         // A SQLite file by default, so `composer serve` needs no services. The
         // Docker compose overrides these through the environment.
@@ -50,16 +61,21 @@ final class App
         // to copy: a real application migrates as a deploy step.
         self::prepareDatabase($app);
 
-        // Who is asking. DemoGuard is emphatically not authentication — see
-        // its docblock. A real application swaps it for a SessionGuard.
-        $app->auth(new DemoGuard($app->db()));
+        // Who is asking: a session cookie, which is an ambient credential and
+        // therefore the thing CSRF protection exists for. The components do
+        // their own CSRF check, so no global middleware is wired here.
+        $users = new DatabaseUserProvider($app->db());
+
+        $app->auth(new SessionGuard($app->session(), $users));
+
+        // The repository the form components ask for by type.
+        $app->container()->instance(UserRepository::class, new UserRepository($app->db(), $users));
 
         // Routes that are not pages: no layout, registered deliberately.
         $app->registrar(Routing\AppRoutes::class);
 
         // Pages: every `#[Route]` under `src/`. Ordering is by specificity, so
-        // `/todos/new` is matched before `/todos/{id}` no matter which file
-        // happens to sort first.
+        // `/register` is matched before `/r/{anything}` should one ever exist.
         $app->discover(__DIR__, __NAMESPACE__);
 
         $app->onHttpError(static fn(int $status, string $message): string => sprintf(
