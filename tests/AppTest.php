@@ -65,8 +65,8 @@ final class AppTest extends TestCase
         $_ENV['DB_DRIVER'] = 'sqlite';
         $_ENV['DB_DATABASE'] = self::$database;
 
-        self::runConsole('migrate');
-        self::runConsole('seed');
+        self::runConsole(['migrate']);
+        self::runConsole(['seed']);
     }
 
     /**
@@ -77,7 +77,20 @@ final class AppTest extends TestCase
      * test that reached past `empira migrate` and `empira seed` would keep
      * passing if those commands broke, which is the one thing worth checking.
      */
-    private static function runConsole(string $command): void
+    /**
+     * Run a console command, require that it succeeded, and hand back what it
+     * printed.
+     *
+     * Takes argv as an array rather than a command line, because the console
+     * parses argv elements and not a string: `seed --name=Grace Hopper` as one
+     * element is one very long command name, and the space is where the
+     * difference shows.
+     *
+     * @param list<string> $argv
+     *
+     * @return array{code: int, output: string}
+     */
+private static function runConsole(array $argv): array
     {
         $previous = getcwd();
         $stream = fopen('php://memory', 'r+b');
@@ -92,7 +105,7 @@ final class AppTest extends TestCase
                 $console->project($name, $projectCommand);
             }
 
-            $exit = $console->run(['empira', $command], $output);
+            $exit = $console->run(array_merge(['empira'], $argv), $output);
         } finally {
             chdir((string) $previous);
         }
@@ -101,7 +114,9 @@ final class AppTest extends TestCase
         $printed = trim((string) stream_get_contents($stream));
         fclose($stream);
 
-        self::assertSame(0, $exit, sprintf('`empira %s` should succeed: %s', $command, $printed));
+        self::assertSame(0, $exit, sprintf('`empira %s` should succeed: %s', implode(' ', $argv), $printed));
+
+        return ['code' => $exit, 'output' => $printed];
     }
 
     public static function tearDownAfterClass(): void
@@ -910,6 +925,82 @@ final class AppTest extends TestCase
     private function rateLimiter(Application $app): RateLimiter
     {
         return $app->container()->get(RateLimiter::class);
+    }
+
+    // ---------------------------------------------------------------- seeding
+
+    public function testSeedingPutsEveryDemoAccountIn(): void
+    {
+        [$app] = $this->app();
+
+        foreach (['ada@example.com' => 'Ada Lovelace', 'test@example.com' => 'Test User'] as $email => $name) {
+            $user = $this->findUser($app, $email);
+
+            self::assertNotNull($user, sprintf('%s was not seeded', $email));
+            self::assertSame($name, $user->name());
+        }
+    }
+
+    public function testBothSeededAccountsCanActuallySignIn(): void
+    {
+        [$app] = $this->app();
+
+        // Asserted on the dashboard rather than on the account existing, because
+        // a seeded row that cannot be signed into is the failure that matters
+        // and it is not visible from a fixture check.
+        foreach (['ada@example.com' => 'correct horse battery staple', 'test@example.com' => 'test1234'] as $email => $password) {
+            $_SESSION = [];
+
+            $this->submit($app, $this->get($app, '/login')->body(), 'login', [
+                'email' => $email,
+                'password' => $password,
+            ]);
+
+            self::assertStringContainsString(
+                'Your account',
+                $this->get($app, '/dashboard')->body(),
+                sprintf('%s could not sign in', $email)
+            );
+        }
+    }
+
+    public function testSeedingTwiceChangesNothingAndStillSucceeds(): void
+    {
+        // A deploy step is allowed to be run twice: a retried pipeline must not
+        // fail on a seed that already happened.
+        [$app] = $this->app();
+        $before = $this->findUser($app, 'ada@example.com')?->id();
+
+        $result = self::runConsole(['seed']);
+
+        self::assertSame(0, $result['code'], $result['output']);
+
+        [$app] = $this->app();
+
+        self::assertSame($before, $this->findUser($app, 'ada@example.com')?->id());
+    }
+
+    public function testSeedingOneNamedAccountNamesItCorrectly(): void
+    {
+        $email = $this->uniqueEmail();
+
+        $result = self::runConsole([
+            'seed',
+            '--email=' . $email,
+            '--name=Grace Hopper',
+            '--password=hunter2please',
+        ]);
+
+        self::assertSame(0, $result['code'], $result['output']);
+
+        [$app] = $this->app();
+        $user = $this->findUser($app, $email);
+
+        self::assertNotNull($user);
+
+        // `--name` exists because the name used to be hardcoded, so anything you
+        // seeded came out called Ada Lovelace.
+        self::assertSame('Grace Hopper', $user->name());
     }
 
     public function testSigningInWithTheRightCredentialsRedirectsToTheDashboard(): void
