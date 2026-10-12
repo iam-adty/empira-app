@@ -39,11 +39,15 @@ final class AppTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        // The workspace `tmp/`, shared with the framework's suite, for the same
-        // reason it uses its own: a failing run leaves its database somewhere
-        // you would think to look. Two levels up, because the folder sits above
-        // both packages rather than inside either — which is also what makes it
-        // resolve the same inside the container.
+        // The shared `tmp/`, for the same reason the framework's suite has one: a
+        // failing run leaves its database somewhere you would think to look.
+        // Two levels up, which in the workspace is above every package — and
+        // inside the container the workspace is mounted at `/workspace`, so the
+        // same string resolves on the host and in the runner.
+        //
+        // A clone of this application alone writes `tmp/` next to itself, one
+        // directory above wherever it was cloned. Untidy, harmless, and the
+        // reason this creates the folder rather than assuming one exists.
         $root = dirname(__DIR__, 2) . '/tmp';
 
         if (! is_dir($root)) {

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "32927a3ac5c13b50441ad9c1c9ff8331",
+    "content-hash": "0e16639d79176c8b46b79689944e3e86",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -861,10 +861,16 @@
         {
             "name": "iam-adty/empira-auth",
             "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/iam-adty/empira-auth.git",
+                "reference": "11f478bad5594e6041bbfc9d3c11fdda233805a5"
+            },
             "dist": {
-                "type": "path",
-                "url": "../auth",
-                "reference": "515f392ef462768f0e4a02af963d26c337467508"
+                "type": "zip",
+                "url": "https://api.github.com/repos/iam-adty/empira-auth/zipball/11f478bad5594e6041bbfc9d3c11fdda233805a5",
+                "reference": "11f478bad5594e6041bbfc9d3c11fdda233805a5",
+                "shasum": ""
             },
             "require": {
                 "doctrine/orm": "^3.5",
@@ -875,6 +881,7 @@
             "require-dev": {
                 "phpunit/phpunit": "^10.5"
             },
+            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -886,10 +893,15 @@
                     "Empira\\Auth\\Tests\\": "tests/"
                 }
             },
+            "scripts": {
+                "test": [
+                    "tools/test"
+                ]
+            },
             "license": [
                 "MIT"
             ],
-            "description": "Authentication for Empira: session and bearer guards, a Doctrine User, and RequireAuth. A module — install it only if your application wants it.",
+            "description": "Authentication for Empira, as a module: session and bearer guards, a Doctrine User, RequireAuth. Install it only if your application wants it.",
             "keywords": [
                 "auth",
                 "authentication",
@@ -898,17 +910,25 @@
                 "module",
                 "session"
             ],
-            "transport-options": {
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/iam-adty/empira-auth/tree/main",
+                "issues": "https://github.com/iam-adty/empira-auth/issues"
+            },
+            "time": "2026-10-12T03:16:35+00:00"
         },
         {
             "name": "iam-adty/empira-principle",
             "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/iam-adty/empira-principle.git",
+                "reference": "b6b54d4583e6753704c3ce47049df378fe7eb1bb"
+            },
             "dist": {
-                "type": "path",
-                "url": "../principle",
-                "reference": "dcafa10586fdeee650f06668b1b1e6ddcd4a4960"
+                "type": "zip",
+                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/b6b54d4583e6753704c3ce47049df378fe7eb1bb",
+                "reference": "b6b54d4583e6753704c3ce47049df378fe7eb1bb",
+                "shasum": ""
             },
             "require": {
                 "doctrine/dbal": "^4.3",
@@ -920,6 +940,7 @@
             "require-dev": {
                 "phpunit/phpunit": "^10.5"
             },
+            "default-branch": true,
             "bin": [
                 "bin/empira"
             ],
@@ -959,9 +980,11 @@
                 "hypermedia",
                 "server-driven"
             ],
-            "transport-options": {
-                "relative": true
-            }
+            "support": {
+                "source": "https://github.com/iam-adty/empira-principle/tree/main",
+                "issues": "https://github.com/iam-adty/empira-principle/issues"
+            },
+            "time": "2026-10-12T03:15:19+00:00"
         },
         {
             "name": "monolog/monolog",
@@ -2220,75 +2243,6 @@
         }
     ],
     "packages-dev": [
-        {
-            "name": "franzl/studio",
-            "version": "0.16.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/franzliedke/studio.git",
-                "reference": "1255eb4017954cbcd32da2a1381d2bf4dd697acc"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/franzliedke/studio/zipball/1255eb4017954cbcd32da2a1381d2bf4dd697acc",
-                "reference": "1255eb4017954cbcd32da2a1381d2bf4dd697acc",
-                "shasum": ""
-            },
-            "require": {
-                "composer-plugin-api": "^1.0 || ^2.0",
-                "php": ">=7.0",
-                "symfony/console": "^2.7 || ^3.0 || ^4.0 || ^5.0 || ^6.0",
-                "symfony/filesystem": "^2.5 || ^3.0 || ^4.0 || ^5.0 || ^6.0",
-                "symfony/process": "^2.5 || ^3.0 || ^4.0 || ^5.0 || ^6.0"
-            },
-            "replace": {
-                "franzliedke/studio": "self.version"
-            },
-            "require-dev": {
-                "composer/composer": "^2.4.2",
-                "phpspec/phpspec": "^6.3 || ^7.0"
-            },
-            "bin": [
-                "bin/studio"
-            ],
-            "type": "composer-plugin",
-            "extra": {
-                "class": "Studio\\Composer\\StudioPlugin",
-                "branch-alias": {
-                    "dev-master": "0.11.x-dev"
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Studio\\": "src"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "description": "Develop your Composer libraries with style",
-            "keywords": [
-                "composer",
-                "development",
-                "workflow"
-            ],
-            "support": {
-                "issues": "https://github.com/franzliedke/studio/issues",
-                "source": "https://github.com/franzliedke/studio/tree/0.16.0"
-            },
-            "funding": [
-                {
-                    "url": "https://github.com/franzliedke",
-                    "type": "github"
-                },
-                {
-                    "url": "https://tidelift.com/funding/github/packagist/franzl/studio",
-                    "type": "tidelift"
-                }
-            ],
-            "time": "2022-10-12T10:32:13+00:00"
-        },
         {
             "name": "myclabs/deep-copy",
             "version": "1.14.0",
@@ -3890,141 +3844,6 @@
                 }
             ],
             "time": "2023-02-07T11:34:05+00:00"
-        },
-        {
-            "name": "symfony/filesystem",
-            "version": "v6.4.45",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/filesystem.git",
-                "reference": "6dabf41c21957a2060f101bd7bf7e322989866bd"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/filesystem/zipball/6dabf41c21957a2060f101bd7bf7e322989866bd",
-                "reference": "6dabf41c21957a2060f101bd7bf7e322989866bd",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=8.1",
-                "symfony/polyfill-ctype": "~1.8",
-                "symfony/polyfill-mbstring": "~1.8"
-            },
-            "require-dev": {
-                "symfony/process": "^5.4|^6.4|^7.0"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Symfony\\Component\\Filesystem\\": ""
-                },
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Fabien Potencier",
-                    "email": "fabien@symfony.com"
-                },
-                {
-                    "name": "Symfony Community",
-                    "homepage": "https://symfony.com/contributors"
-                }
-            ],
-            "description": "Provides basic utilities for the filesystem",
-            "homepage": "https://symfony.com",
-            "support": {
-                "source": "https://github.com/symfony/filesystem/tree/v6.4.45"
-            },
-            "funding": [
-                {
-                    "url": "https://symfony.com/sponsor",
-                    "type": "custom"
-                },
-                {
-                    "url": "https://github.com/fabpot",
-                    "type": "github"
-                },
-                {
-                    "url": "https://github.com/nicolas-grekas",
-                    "type": "github"
-                },
-                {
-                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
-                    "type": "tidelift"
-                }
-            ],
-            "time": "2026-08-23T07:59:31+00:00"
-        },
-        {
-            "name": "symfony/process",
-            "version": "v6.4.46",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/symfony/process.git",
-                "reference": "b9f3d9ddf67543b92dbfa6d210c407d7a7982781"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/symfony/process/zipball/b9f3d9ddf67543b92dbfa6d210c407d7a7982781",
-                "reference": "b9f3d9ddf67543b92dbfa6d210c407d7a7982781",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=8.1"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Symfony\\Component\\Process\\": ""
-                },
-                "exclude-from-classmap": [
-                    "/Tests/"
-                ]
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Fabien Potencier",
-                    "email": "fabien@symfony.com"
-                },
-                {
-                    "name": "Symfony Community",
-                    "homepage": "https://symfony.com/contributors"
-                }
-            ],
-            "description": "Executes commands in sub-processes",
-            "homepage": "https://symfony.com",
-            "support": {
-                "source": "https://github.com/symfony/process/tree/v6.4.46"
-            },
-            "funding": [
-                {
-                    "url": "https://symfony.com/sponsor",
-                    "type": "custom"
-                },
-                {
-                    "url": "https://github.com/fabpot",
-                    "type": "github"
-                },
-                {
-                    "url": "https://github.com/nicolas-grekas",
-                    "type": "github"
-                },
-                {
-                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
-                    "type": "tidelift"
-                }
-            ],
-            "time": "2026-09-02T12:35:55+00:00"
         },
         {
             "name": "theseer/tokenizer",

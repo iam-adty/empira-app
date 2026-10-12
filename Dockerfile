@@ -54,6 +54,19 @@ COPY principle /principle
 COPY auth /auth
 COPY app/composer.json ./composer.json
 
+# Say what is wrong rather than failing three COPYs later with no explanation.
+# The build context is the workspace root, so a missing sibling is the one
+# failure here that a cloner of `app` alone cannot fix by retrying.
+RUN for d in /principle /auth; do \
+        [ -d "$d" ] || { \
+            echo "empira: $d is missing from the build context." >&2; \
+            echo "This image builds from the workspace root, so clone or place" >&2; \
+            echo "empira-principle and empira-auth beside app/ and run from there:" >&2; \
+            echo "    docker compose -f app/docker-compose.yml up -d --build" >&2; \
+            exit 1; \
+        }; \
+    done
+
 RUN composer config repositories.principle \
         '{"type":"path","url":"/principle","options":{"symlink":false,"versions":{"iam-adty/empira-principle":"dev-main"}}}' \
     && composer config repositories.empira-auth \
