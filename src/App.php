@@ -6,8 +6,6 @@ namespace App;
 
 use Empira\Application;
 use Empira\Auth\AuthModule;
-use Empira\Auth\DoctrineUserProvider;
-use Empira\Auth\SessionGuard;
 use Empira\Config\Env;
 use Empira\Security\Csrf;
 use Empira\State\SessionState;
@@ -25,14 +23,16 @@ use Psr\Log\LoggerInterface;
  * to want: a secret, somewhere for records to go, somewhere for components to be
  * found, an error page, and the database settings. Nothing here is a *feature*.
  *
- * The interesting line is the module:
+ * The interesting line is the module, and it is no longer in this file — it is in
+ * `bootstrap/modules.php`, which says what this application is made of:
  *
- *     $app->module(new AuthModule([new SessionGuard($app->session(), $users)]));
+ *     return [new AuthModule([new SessionGuard($app->session(), $users)])];
  *
  * Authentication used to be part of the framework, which meant every application
  * carried a users table whether it asked for one or not. It is a module now, and
- * this is what asking for one looks like — one line, and every file below it
- * comes with the feature rather than with a README telling you what to copy.
+ * this is what asking for one looks like — one line in one readable file, and
+ * every file below it comes with the feature rather than with a README telling you
+ * what to copy.
  *
  * A page is a route and nothing else: `#[Route]` on a layout class, with the
  * document built by {@see \Empira\View\Layout}.
@@ -87,19 +87,22 @@ final class App
         // nobody asks anything about.
         $app->orm(self::databaseConfig(), [__DIR__, AuthModule::entityPath()]);
 
-        // Authentication, installed rather than switched on.
+        // What this application is made of, from `bootstrap/modules.php`.
         //
-        // The guard is built from the application's *own* session — the same
-        // one the rest of the app writes to, not a fresh one. A guard reading a
-        // session nothing writes is a login form that reports "wrong password"
-        // forever, and it looks correct in review because the type is right.
+        // A closure and not a list of modules, because a module is built from
+        // the container — the auth guard needs this application's session and
+        // entity manager, both of which exist only now. It used to be one line
+        // inline here, which scattered the answer to "what does this application
+        // have?" through the middle of a boot method that also builds a logger
+        // and discovers routes.
         //
-        // The provider holds no entity: it is handed an EntityManager that
-        // `Application::handle()` clears between requests, so a user loaded for
-        // one request belongs to that request and not to the worker.
-        $app->module(new AuthModule([
-            new SessionGuard($app->session(), new DoctrineUserProvider($app->entities())),
-        ]));
+        // Deleting the `return [...]` from that file is how an application drops
+        // authentication, which is the point of it being a module.
+        //
+        // @var callable(Application): list<\Empira\Module> $modules
+        $modules = require self::basePath('bootstrap/modules.php');
+
+        $app->module(...$modules($app));
 
         // Where anything the framework or the app has to record goes. Before this
         // the framework logged nothing at all, so a genuine bug was re-thrown
@@ -121,6 +124,33 @@ final class App
     }
 
     /**
+ * Load `.env` into `$_ENV`, before anything reads configuration from it.
+ *
+ * The real environment wins: a variable already set — by Docker, by a shell, by
+ * a test — is not overwritten by the file. That ordering is the only interesting
+ * part, and getting it backwards makes a `.env` file silently override the
+ * deployment it was supposed to be overridden by.
+ */
+    public static function loadEnvironment(string $basePath): void
+    {
+        $_ENV = array_merge(Env::fromFile($basePath . '/.env'), $_ENV);
+    }
+
+    /**
+     * The application directory, for reaching files that are not autoloaded.
+     *
+     * Everything under `src/` is found by the autoloader and the route
+     * discoverer, so this is for the few things that are neither: `bootstrap/`,
+     * `.env`, and the storage directory. One method rather than a repeated
+     * `dirname(__DIR__)`, because the one place it is wrong is a path that
+     * silently resolves somewhere else.
+     */
+    private static function basePath(string $relative = ''): string
+    {
+        return dirname(__DIR__) . ($relative === '' ? '' : '/' . ltrim($relative, '/'));
+    }
+
+    /**
      * A Monolog logger writing JSON to stderr.
      *
      * stderr rather than a file, because a container has nowhere to keep a log
@@ -134,19 +164,6 @@ final class App
      * already refuses to let a broken logger replace the exception it was
      * recording.
      */
-    /**
- * Load `.env` into `$_ENV`, before anything reads configuration from it.
- *
- * The real environment wins: a variable already set — by Docker, by a shell, by
- * a test — is not overwritten by the file. That ordering is the only interesting
- * part, and getting it backwards makes a `.env` file silently override the
- * deployment it was supposed to be overridden by.
- */
-public static function loadEnvironment(string $basePath): void
-    {
-        $_ENV = array_merge(Env::fromFile($basePath . '/.env'), $_ENV);
-    }
-
     private static function logger(): LoggerInterface
     {
         $handler = new StreamHandler(

@@ -10,6 +10,7 @@ use Empira\Auth\AuthModule;
 use Empira\Auth\User;
 use Empira\Console;
 use Empira\Http\Request;
+use Empira\Module;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -171,6 +172,43 @@ final class AppTest extends TestCase
         self::assertCount(1, $app->modules());
         self::assertInstanceOf(AuthModule::class, $app->modules()[0]);
         self::assertCount(1, $app->guards(), 'the module registered no guard');
+    }
+
+    /**
+     * The registry file is the answer to "what is this application made of?",
+     * and this is what makes that true rather than aspirational.
+     *
+     * It returns a *closure* and not a list, because a module is built from the
+     * container: the auth guard needs this application's session and entity
+     * manager, and neither exists before `Application::orm()` has run. So the
+     * registry is a recipe, `App::boot()` calls it when the container is ready,
+     * and a list built eagerly at the top of the file would fail.
+     *
+     * The two checks that matter: the file returns something callable, and what
+     * it returns is the module that boot installed. If someone moves the module
+     * back inline and leaves this file behind, the boot assertion still passes
+     * and this one does not — which is the whole reason the registry is the
+     * thing being tested rather than the framework.
+     */
+    public function testTheRegistryFileIsWhatDecidesWhichModulesExist(): void
+    {
+        $registry = require dirname(__DIR__) . '/bootstrap/modules.php';
+
+        self::assertIsCallable($registry, 'the registry must return a closure, not a list');
+
+        $app = App::boot();
+
+        // Called with the booted application rather than a fresh one: the
+        // registry reads `$app->session()` and `$app->entities()`, so this is
+        // the same call `App::boot()` makes, and the modules it returns must be
+        // the ones already installed.
+        self::assertEquals(
+            array_map('get_class', $app->modules()),
+            array_map('get_class', $registry($app)),
+            'the registry and the booted application disagree about the modules'
+        );
+
+        self::assertContainsOnlyInstancesOf(Module::class, $registry($app));
     }
 
     /**
