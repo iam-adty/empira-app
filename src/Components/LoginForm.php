@@ -6,6 +6,7 @@ namespace App\Components;
 
 use App\Auth\UserRepository;
 use App\RateLimit\RateLimiter;
+use App\Registration;
 use IamAdty\Empira\Auth\Auth;
 use IamAdty\Empira\Attributes\Post;
 use IamAdty\Empira\Component;
@@ -194,7 +195,7 @@ final class LoginForm extends Component
     {
         $error = $this->stringProp('error');
 
-        return $this->hx->div()
+        $form = $this->hx->div()
             ->id($this->id())
             ->class('card auth-form')
             ->append(
@@ -215,8 +216,19 @@ final class LoginForm extends Component
                     'autocomplete' => 'current-password',
                 ]),
                 $this->hx->button()->text('Sign in')->action('login'),
-                $this->hx->p()->class('lede')
-                    ->append($this->hx->a()->attr('href', '/register')->text('Create an account')),
             );
+
+        // The sign-up link is the one thing on this page that has to move when
+        // registration closes. The form itself is already a 404 by then, so
+        // leaving a link to it here would be advertising a route that answers
+        // "not found".
+        if (Registration::isOpen()) {
+            $form = $form->append(
+                $this->hx->p()->class('lede')
+                    ->append($this->hx->a()->attr('href', '/register')->text('Create an account'))
+            );
+        }
+
+        return $form;
     }
 }

@@ -6,11 +6,15 @@ namespace App\Components;
 
 use App\Auth\DuplicateEmail;
 use App\Auth\UserRepository;
+use App\RateLimit\RateLimiter;
+use App\Registration;
 use IamAdty\Empira\Auth\Auth;
 use IamAdty\Empira\Attributes\Post;
 use IamAdty\Empira\Component;
 use IamAdty\Empira\Element;
 use IamAdty\Empira\Raw;
+use IamAdty\Empira\Routing\HttpException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Create an account, and sign in with it.
@@ -26,10 +30,42 @@ use IamAdty\Empira\Raw;
 final class RegisterForm extends Component
 {
     #[Post]
-    public function register(Auth $auth, UserRepository $users): void
-    {
+    public function register(
+        Auth $auth,
+        UserRepository $users,
+        RateLimiter $limiter,
+        LoggerInterface $log,
+    ): void {
         if ($auth->check()) {
             $this->response()->redirect('/dashboard');
+
+            return;
+        }
+
+        // Checked here rather than left to the route's `RegistrationOpen`,
+        // because this action posts to its own signed component URL and no route
+        // middleware ever sees it. A page-level gate alone would 404 the page
+        // while leaving the endpoint open to anybody who had the form open
+        // before it closed — which is the same trap the signed-in check above
+        // already has to work around.
+        if (!Registration::isOpen()) {
+            $log->warning('registration refused: closed', ['ip' => $this->request()->ip()]);
+
+            $this->refuse();
+
+            return;
+        }
+
+        $ip = $this->request()->ip();
+        $byIp = RateLimiter::key('register:ip', $ip ?? 'unknown');
+
+        // Per address only. Stopping one host creating a pile of throwaway
+        // accounts is the point; there is no account being defended, so there is
+        // nothing to count per credential.
+        if ($limiter->isBlocked($byIp, self::ipLimit(), self::window())) {
+            $log->warning('registration blocked: rate limited', ['ip' => $ip]);
+
+            $this->refuse();
 
             return;
         }
@@ -54,6 +90,11 @@ final class RegisterForm extends Component
             return;
         }
 
+        // Recorded after validation and not before: a form that failed its own
+        // rules is not an attempt to create an account, and counting those would
+        // make a typo look like an attack.
+        $limiter->record($byIp, self::window());
+
         try {
             $user = $users->register($name, $email, $password);
         } catch (DuplicateEmail $e) {
@@ -65,6 +106,48 @@ final class RegisterForm extends Component
         $auth->login($user);
 
         $this->response()->redirect('/dashboard');
+    }
+
+    /**
+     * Refuse, the same way {@see LoginForm::refuse()} does.
+     *
+     * A swap re-renders the form; anything else gets a real 429 with
+     * `Retry-After`. Closing registration and being rate limited answer
+     * differently — one is 404, because the endpoint should look absent, and the
+     * other is 429, because the person has a legitimate reason to come back.
+     */
+    private function refuse(): void
+    {
+        if (!Registration::isOpen()) {
+            // Gone, not slow. A page saying "try again later" about something
+            // that will never reopen is worse than one saying nothing.
+            if (! $this->request()->isHtmx()) {
+                throw new HttpException(404, Registration::notFoundMessage());
+            }
+
+            $this->with('errors', ['name' => [Registration::notFoundMessage()]]);
+
+            return;
+        }
+
+        if (! $this->request()->isHtmx()) {
+            throw new HttpException(429, 'Too many attempts.', [
+                'Retry-After' => (string) self::window(),
+            ]);
+        }
+
+        $this->with('errors', ['name' => ['Too many attempts. Try again later.']]);
+    }
+
+    private static function window(): int
+    {
+        return (int) ($_ENV['RATE_LIMIT_REGISTER_WINDOW'] ?? 3600);
+    }
+
+    /** Looser than sign-in per address, and for the same WSL reason. */
+    private static function ipLimit(): int
+    {
+        return (int) ($_ENV['RATE_LIMIT_REGISTER'] ?? 3);
     }
 
     protected function styles(): Raw

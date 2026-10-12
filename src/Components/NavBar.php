@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Components;
 
+use App\Registration;
 use IamAdty\Empira\Auth\Auth;
 use IamAdty\Empira\Component;
 use IamAdty\Empira\Element;
@@ -34,10 +35,17 @@ final class NavBar extends Component
         $user = $this->container()->get(Auth::class)->user();
 
         $links = $user === null
-            ? [
+            ? array_values(array_filter([
                 $this->hx->a()->attr('href', '/login')->text('Sign in'),
-                $this->hx->a()->attr('href', '/register')->text('Create account'),
-            ]
+
+                // Hidden when registration is closed, because a navigation bar
+                // is the one place every visitor is guaranteed to look. Leaving
+                // the link and 404-ing its destination would be worse than
+                // useless: it advertises a sign-up route that does not exist.
+                Registration::isOpen()
+                    ? $this->hx->a()->attr('href', '/register')->text('Create account')
+                    : null,
+            ]))
             : [
                 $this->hx->span()->class('nav-user')->text((string) $user->attribute('name', 'Signed in')),
                 $this->hx->a()->attr('href', '/dashboard')->text('Dashboard'),

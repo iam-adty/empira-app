@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\App;
 use App\Auth\UserRepository;
 use App\RateLimit\RateLimiter;
+use App\Registration;
 use IamAdty\Empira\Application;
 use IamAdty\Empira\Auth\User;
 use IamAdty\Empira\Config\DatabaseConfig;
@@ -120,11 +121,13 @@ final class AppTest extends TestCase
 
         // Both limits are raised out of the way by default. This suite shares
         // one database, and several tests exist precisely to fail Ada's password
-        // — so the default would have their own failures accumulate and lock her
-        // out of every test that runs later, and the suite would pass or fail
-        // depending on order. The lockout tests below lower a limit deliberately.
+        // or to register a throwaway — so the default would let their own
+        // attempts accumulate and lock each other out, and the suite would pass
+        // or fail depending on order. The limit tests below lower one
+        // deliberately.
         $_ENV['RATE_LIMIT_LOGIN_IP'] = '10000';
         $_ENV['RATE_LIMIT_LOGIN_EMAIL'] = '10000';
+        $_ENV['RATE_LIMIT_REGISTER'] = '10000';
     }
 
     protected function tearDown(): void
@@ -139,6 +142,9 @@ final class AppTest extends TestCase
             $_ENV['RATE_LIMIT_LOGIN_EMAIL'],
             $_ENV['RATE_LIMIT_LOGIN_IP'],
             $_ENV['RATE_LIMIT_WINDOW'],
+            $_ENV['RATE_LIMIT_REGISTER'],
+            $_ENV['RATE_LIMIT_REGISTER_WINDOW'],
+            $_ENV['REGISTRATION'],
         );
     }
 
@@ -428,6 +434,126 @@ final class AppTest extends TestCase
         $this->assertStringContainsString('name="email"', $body);
         $this->assertStringContainsString('name="password"', $body);
         $this->assertStringContainsString('name="password_confirmation"', $body);
+    }
+
+    // ------------------------------------------------ closing registration
+
+    public function testRegistrationIsOpenUnlessSomethingSaysOtherwise(): void
+    {
+        unset($_ENV['REGISTRATION']);
+
+        [$app] = $this->app();
+
+        self::assertTrue(Registration::isOpen());
+        self::assertSame(200, $this->get($app, '/register')->status());
+        self::assertStringContainsString('Create account', $this->get($app, '/')->body());
+        self::assertStringContainsString('Create an account', $this->get($app, '/login')->body());
+    }
+
+    public function testClosedRegistrationIsARouteThatDoesNotExist(): void
+    {
+        $_ENV['REGISTRATION'] = 'closed';
+
+        [$app] = $this->app();
+
+        // 404 rather than "sign-ups are closed". The second is kinder to the
+        // one person who trips over it and tells everyone else there is an
+        // account system here worth trying again.
+        self::assertSame(404, $this->get($app, '/register')->status());
+    }
+
+    public function testClosedRegistrationTakesItsLinksWithIt(): void
+    {
+        $_ENV['REGISTRATION'] = 'closed';
+
+        [$app] = $this->app();
+
+        // A navigation bar is where every visitor is guaranteed to look. Leaving
+        // the link and 404-ing its destination advertises a route that does not
+        // exist.
+        self::assertStringNotContainsString('Create account', $this->get($app, '/')->body());
+        self::assertStringNotContainsString('Create an account', $this->get($app, '/login')->body());
+
+        // And the sign-in link stays — it is still how anybody gets in.
+        self::assertStringContainsString('/login', $this->get($app, '/')->body());
+    }
+
+    public function testAFormHeldOpenBeforeRegistrationClosedStillCannotPost(): void
+    {
+        // The trap. The action posts to its own signed component URL, which the
+        // page route never sees — so closing the page while leaving the endpoint
+        // open would leave anybody who had the form open able to sign up.
+        [$app] = $this->app();
+
+        // Captured while registration is still open, which is the whole scenario.
+        $html = $this->get($app, '/register')->body();
+        $email = $this->uniqueEmail();
+
+        $_ENV['REGISTRATION'] = 'closed';
+
+        [$app] = $this->app();
+
+        $response = $this->submit($app, $html, 'register', [
+            'name' => 'Late Arrival',
+            'email' => $email,
+            'password' => 'a real password',
+            'password_confirmation' => 'a real password',
+        ]);
+
+        self::assertSame(0, $this->countUsers($app, $email), 'the account was created anyway');
+        self::assertStringNotContainsString('Dashboard', $response->headers()['HX-Redirect'] ?? '');
+    }
+
+    public function testRegistrationIsRateLimitedPerAddress(): void
+    {
+        $_ENV['RATE_LIMIT_REGISTER'] = '2';
+        $_ENV['RATE_LIMIT_REGISTER_WINDOW'] = '3600';
+
+        [$app] = $this->app();
+
+        for ($i = 0; $i < 2; $i++) {
+            // Registration signs the user in, and a signed-in visitor is
+            // redirected away from the form — so the session is dropped between
+            // attempts or the second one has no form to submit.
+            $_SESSION = [];
+
+            $this->submit($app, $this->get($app, '/register')->body(), 'register', [
+                'name' => 'Filler',
+                'email' => $this->uniqueEmail(),
+                'password' => 'a real password',
+                'password_confirmation' => 'a real password',
+            ]);
+        }
+
+        self::assertTrue(
+            $this->rateLimiter($app)->isBlocked(RateLimiter::key('register:ip', 'unknown'), 2, 3600),
+            'two registrations should have spent the allowance'
+        );
+    }
+
+    public function testAFormThatFailedItsOwnRulesIsNotCountedAsAnAttempt(): void
+    {
+        // A validation failure is not somebody creating accounts; counting it
+        // would make one typo look like an attack and lock a real person out.
+        [$app] = $this->app();
+
+        // Cleared first: this suite shares one database and its "unknown"
+        // address key, so anything an earlier test recorded is still on it.
+        $this->rateLimiter($app)->clear(RateLimiter::key('register:ip', 'unknown'));
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->submit($app, $this->get($app, '/register')->body(), 'register', [
+                'name' => 'x',
+                'email' => 'not-an-email',
+                'password' => 'short',
+                'password_confirmation' => 'different',
+            ]);
+        }
+
+        self::assertFalse(
+            $this->rateLimiter($app)->isBlocked(RateLimiter::key('register:ip', 'unknown'), 3, 3600),
+            'invalid submissions were counted against the registration limit'
+        );
     }
 
     public function testRegisteringCreatesAnAccountAndSignsIn(): void
