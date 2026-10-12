@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Components;
 
 use App\Registration;
-use IamAdty\Empira\Auth\Auth;
-use IamAdty\Empira\Component;
-use IamAdty\Empira\Element;
-use IamAdty\Empira\Raw;
+use Empira\Auth\Auth;
+use Empira\Component;
+use Empira\Element;
+use Empira\Raw;
 
 /**
  * The navigation bar: links for a guest, identity and a way out for a user.

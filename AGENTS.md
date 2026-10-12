@@ -127,7 +127,7 @@ If you do not see a change, check that symlink first; do not reinstall.
   rule itself is one level up, in the workspace
   [`AGENTS.md`](../AGENTS.md), because it is not specific to this package.
 - `App\` namespace under `src/`, PSR-4.
-- Components extend `IamAdty\Empira\Component` and return an `Element`.
+- Components extend `Empira\Component` and return an `Element`.
 - An action **returns void**; it responds by mutating props and the response.
 - `php bin/empira make:component Name` writes to `src/components/` and prints the
   `registry()->alias()` line you must then add.

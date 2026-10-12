@@ -6,8 +6,8 @@ namespace App\Auth;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
-use IamAdty\Empira\Auth\DoctrineUserProvider;
-use IamAdty\Empira\Auth\User;
+use Empira\Auth\DoctrineUserProvider;
+use Empira\Auth\User;
 
 /**
  * Reading and writing users.

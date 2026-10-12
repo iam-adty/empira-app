@@ -7,10 +7,10 @@ namespace App\Pages;
 use App\Components\LoginForm;
 use App\Layouts\SiteLayout;
 use App\Middleware\RedirectIfAuthenticated;
-use IamAdty\Empira\Attributes\Route;
-use IamAdty\Empira\Element;
-use IamAdty\Empira\Raw;
-use IamAdty\Empira\View\Region;
+use Empira\Attributes\Route;
+use Empira\Element;
+use Empira\Raw;
+use Empira\View\Region;
 
 /**
  * The sign-in page.

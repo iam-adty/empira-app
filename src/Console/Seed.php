@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Console;
 
 use App\Auth\UserRepository;
-use IamAdty\Empira\Console\Command;
-use IamAdty\Empira\Console\Output;
+use Empira\Console\Command;
+use Empira\Console\Output;
 
 /**
  * Put the demo accounts in, so there is somebody to sign in as.

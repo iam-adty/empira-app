@@ -6,9 +6,9 @@ namespace App\Middleware;
 
 use App\Registration;
 use Closure;
-use IamAdty\Empira\Http\Middleware;
-use IamAdty\Empira\Http\Request;
-use IamAdty\Empira\Http\Response;
+use Empira\Http\Middleware;
+use Empira\Http\Request;
+use Empira\Http\Response;
 
 /**
  * Make `/register` a route that does not exist, when registration is closed.

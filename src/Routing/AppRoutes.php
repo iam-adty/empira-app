@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Routing;
 
-use IamAdty\Empira\Routing\RouteCollection;
-use IamAdty\Empira\Routing\RouteRegistrar;
+use Empira\Routing\RouteCollection;
+use Empira\Routing\RouteRegistrar;
 
 /**
  * The routes that are not pages.
@@ -20,7 +20,7 @@ final class AppRoutes implements RouteRegistrar
     {
         $routes->get(
             '/healthz',
-            static fn(): \IamAdty\Empira\Http\Response => \IamAdty\Empira\Http\Response::json(['ok' => true]),
+            static fn(): \Empira\Http\Response => \Empira\Http\Response::json(['ok' => true]),
             'health'
         );
     }

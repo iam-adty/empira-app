@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Middleware;
 
 use Closure;
-use IamAdty\Empira\Auth\Auth;
-use IamAdty\Empira\Http\Middleware;
-use IamAdty\Empira\Http\Request;
-use IamAdty\Empira\Http\Response;
-use IamAdty\Empira\Http\Session;
+use Empira\Auth\Auth;
+use Empira\Http\Middleware;
+use Empira\Http\Request;
+use Empira\Http\Response;
+use Empira\Http\Session;
 
 /**
  * Send anyone who is not signed in to the sign-in page.

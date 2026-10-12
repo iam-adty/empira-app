@@ -6,10 +6,10 @@ namespace App\Layouts;
 
 use App\Components\NavBar;
 use App\Css;
-use IamAdty\Empira\Element;
-use IamAdty\Empira\Raw;
-use IamAdty\Empira\View\Layout;
-use IamAdty\Empira\View\Region;
+use Empira\Element;
+use Empira\Raw;
+use Empira\View\Layout;
+use Empira\View\Region;
 
 /**
  * The master layout: the document, and the two regions every page has.

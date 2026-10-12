@@ -7,12 +7,12 @@ namespace App\Components;
 use App\Auth\UserRepository;
 use App\RateLimit\RateLimiter;
 use App\Registration;
-use IamAdty\Empira\Auth\Auth;
-use IamAdty\Empira\Attributes\Post;
-use IamAdty\Empira\Component;
-use IamAdty\Empira\Element;
-use IamAdty\Empira\Raw;
-use IamAdty\Empira\Routing\HttpException;
+use Empira\Auth\Auth;
+use Empira\Attributes\Post;
+use Empira\Component;
+use Empira\Element;
+use Empira\Raw;
+use Empira\Routing\HttpException;
 use Psr\Log\LoggerInterface;
 
 /**

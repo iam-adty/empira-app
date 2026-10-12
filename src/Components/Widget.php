@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Components;
 
-use IamAdty\Empira\Component;
-use IamAdty\Empira\Element;
-use IamAdty\Empira\Raw;
-use IamAdty\Empira\StyleOrder;
+use Empira\Component;
+use Empira\Element;
+use Empira\Raw;
+use Empira\StyleOrder;
 
 /**
  * An embeddable block with its own chrome.

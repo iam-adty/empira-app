@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Components;
 
-use IamAdty\Empira\Auth\Auth;
-use IamAdty\Empira\Attributes\Post;
-use IamAdty\Empira\Component;
-use IamAdty\Empira\Element;
+use Empira\Auth\Auth;
+use Empira\Attributes\Post;
+use Empira\Component;
+use Empira\Element;
 
 /**
  * Sign out.

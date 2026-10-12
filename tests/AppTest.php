@@ -8,12 +8,12 @@ use App\App;
 use App\Auth\UserRepository;
 use App\RateLimit\RateLimiter;
 use App\Registration;
-use IamAdty\Empira\Application;
-use IamAdty\Empira\Auth\User;
-use IamAdty\Empira\Config\DatabaseConfig;
-use IamAdty\Empira\Console;
-use IamAdty\Empira\Http\Request;
-use IamAdty\Empira\Security\Csrf;
+use Empira\Application;
+use Empira\Auth\User;
+use Empira\Config\DatabaseConfig;
+use Empira\Console;
+use Empira\Http\Request;
+use Empira\Security\Csrf;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -860,7 +860,7 @@ private static function runConsole(array $argv): array
         // identical whether the request was refused or merely got the password
         // wrong — and a swap test that watched only the body would pass with the
         // limiter disabled.
-        [$response, $logged] = $this->captureLogPair(function (Application $app): \IamAdty\Empira\Http\Response {
+        [$response, $logged] = $this->captureLogPair(function (Application $app): \Empira\Http\Response {
             return $this->submit($app, $this->get($app, '/login')->body(), 'login', [
                 'email' => 'ada@example.com',
                 'password' => 'anything',

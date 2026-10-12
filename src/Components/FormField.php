@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Components;
 
-use IamAdty\Empira\Component;
-use IamAdty\Empira\Element;
+use Empira\Component;
+use Empira\Element;
 
 /**
  * One labelled input, with room for a message.

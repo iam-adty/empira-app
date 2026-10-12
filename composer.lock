@@ -864,7 +864,7 @@
             "dist": {
                 "type": "path",
                 "url": "../principle",
-                "reference": "e90aed5b17b387c8d4dc44f59f8a27f7c8a0c6aa"
+                "reference": "c60d05cf97e1995bad229c627f51058f6abe4ec1"
             },
             "require": {
                 "doctrine/dbal": "^4.3",
@@ -882,7 +882,7 @@
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "IamAdty\\Empira\\": "src/"
+                    "Empira\\": "src/"
                 },
                 "files": [
                     "src/functions.php"
@@ -890,7 +890,7 @@
             },
             "autoload-dev": {
                 "psr-4": {
-                    "IamAdty\\Empira\\Tests\\": "tests/"
+                    "Empira\\Tests\\": "tests/"
                 },
                 "classmap": [
                     "tests/Fixtures/"
