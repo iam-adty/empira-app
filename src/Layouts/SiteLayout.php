@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace App\Layouts;
 
-use App\Components\NavBar;
-use App\Css;
 use Empira\Element;
 use Empira\Raw;
 use Empira\View\Layout;
 use Empira\View\Region;
 
 /**
- * The master layout: the document, and the two regions every page has.
+ * The document, and the regions a page fills.
  *
- * A page extends this and adds its own regions rather than repeating the
+ * A page extends this and contributes a region rather than repeating the
  * document:
  *
- *     final class LoginLayout extends SiteLayout
+ *     final class PageLayout extends SiteLayout
  *     {
  *         protected function regions(): array
  *         {
@@ -25,15 +23,14 @@ use Empira\View\Region;
  *         }
  *     }
  *
- * `nav` is declared **once**, here, so a page cannot forget it or spell it
- * differently. `main` is left to the subclass.
+ * `main` is declared **once**, here, so a page cannot forget it or spell it
+ * differently. Each region is an element with an id, and htmx can swap any one
+ * of them on its own — which is why they are regions and not just markup.
  *
- * Global styling is also declared once, in `styles()`. It lands in `<head>`
- * ahead of any component's own sheet, which is emitted inside its root element
- * and therefore arrives later — so a component overrides the global layer by
- * ordering alone, with no specificity fight.
- *
- * @see Css
+ * Global styling lives in `styles()` and lands in `<head>` ahead of any
+ * component's own sheet, which is emitted inside its root element and therefore
+ * arrives later. A component overrides the global layer by ordering alone, with
+ * no specificity fight.
  */
 abstract class SiteLayout extends Layout
 {
@@ -43,7 +40,6 @@ abstract class SiteLayout extends Layout
     protected function regions(): array
     {
         return [
-            'nav' => fn(Region $region): mixed => $region->component(NavBar::class),
             'main' => fn(Region $region): mixed => null,
         ];
     }
@@ -55,7 +51,7 @@ abstract class SiteLayout extends Layout
 
     protected function header(): Element|Raw|null
     {
-        return $this->hx->main()->append(
+        return $this->hx->header()->append(
             $this->hx->h1($this->title()),
             $this->hx->p()->class('lede')->text(
                 'htmx lives in PHP classes. Not one hx-* attribute below is hand-written.'
@@ -65,6 +61,20 @@ abstract class SiteLayout extends Layout
 
     protected function styles(): Element|Raw
     {
-        return Raw::of(Css::base());
+        return Raw::of(self::CSS);
     }
+
+    /**
+     * Enough to see that the thing arrived. Deliberately tiny: a skeleton is not
+     * a design system, and a stylesheet somebody might mistake for one is a
+     * liability in a file whose job is to be a starting point.
+     */
+    private const CSS = <<<'CSS'
+        :root { color-scheme: light dark; }
+        body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 44rem; padding: 3rem 1.5rem; }
+        h1 { font-size: 1.75rem; margin: 0 0 .25rem; }
+        .lede { color: #666; margin: 0 0 2rem; }
+        a { color: inherit; }
+        @media (prefers-color-scheme: dark) { .lede { color: #999; } }
+        CSS;
 }

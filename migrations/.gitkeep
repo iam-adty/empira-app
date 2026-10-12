@@ -1,0 +1,13 @@
+This directory is empty on purpose.
+
+`empira migrate` refuses to run without it, and that refusal is correct — a
+project that has written no migrations should be told so rather than having the
+command report success against a directory it never found. So the directory
+exists and is empty, and the migrations that *are* real come from modules:
+
+    Empira\Migrations\Auth\Version20261011000001   auth/migrations
+    Empira\Migrations\Auth\Version20261012000001   auth/migrations
+
+A module's migration directory is registered by the module at boot, and `migrate`
+plans across all of them in one sequence against one version ledger. Drop your
+own `Version*.php` here and it is sequenced alongside them, not after them.

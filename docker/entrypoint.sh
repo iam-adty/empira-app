@@ -11,22 +11,26 @@ set -eu
 
 cd /workspace/app
 
-# Migrate and seed before serving anything.
+# Migrate before serving anything.
 #
 # The application does not do this at boot, deliberately: a worker boots once
 # per thread, so a boot that migrates has every thread racing through the same
 # migration. Two choices remain, and this one is the honest one.
 #
-# Running them here is a real compromise, and it is the compromise a single
+# Running it here is a real compromise, and it is the compromise a single
 # container forces. The schema is prepared once per *container start*, not once
 # per boot and not once per deploy, and `empira migrate` takes its own lock —
 # so a scaled deployment runs it several times, which is safe because Doctrine
 # sees the migrations have already been applied. A deployment where the
 # migration genuinely depends on running exactly once should do it in a job
 # that finishes before this command, not here.
+#
+# There is no `seed` here. A skeleton has no accounts to invent, and a deploy
+# step that seeds demo credentials into anything reachable is the wrong default
+# to ship in a file somebody copies. Add your own command with
+# `$app->command('seed', …)` and call it from here when you want it.
 if [ "${APP_MIGRATE_ON_START:-true}" = "true" ]; then
     php vendor/bin/empira migrate
-    php vendor/bin/empira seed
 fi
 
 # The root is public/ and only public/. It is what makes the front controller

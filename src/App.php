@@ -4,16 +4,10 @@ declare(strict_types=1);
 
 namespace App;
 
-use App\Auth\UserRepository;
-use App\Console\Seed;
-use App\RateLimit\RateLimiter;
-use Doctrine\DBAL\DriverManager;
 use Empira\Application;
 use Empira\Auth\AuthModule;
 use Empira\Auth\DoctrineUserProvider;
 use Empira\Auth\SessionGuard;
-use Empira\Config\Config;
-use Empira\Config\DatabaseConfig;
 use Empira\Config\Env;
 use Empira\Security\Csrf;
 use Empira\State\SessionState;
@@ -25,11 +19,23 @@ use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 
 /**
- * The application's wiring, in one place so `public/index.php` and the test
- * suite exercise exactly the same thing.
+ * A bare application, and the shortest thing that boots.
  *
- * The page itself is a route; the document lives in {@see Layout}, and the
- * three cards inside it are regions that htmx can swap one at a time.
+ * Everything here is something a real application needs and cannot be assumed
+ * to want: a secret, somewhere for records to go, somewhere for components to be
+ * found, an error page, and the database settings. Nothing here is a *feature*.
+ *
+ * The interesting line is the module:
+ *
+ *     $app->module(new AuthModule([new SessionGuard($app->session(), $users)]));
+ *
+ * Authentication used to be part of the framework, which meant every application
+ * carried a users table whether it asked for one or not. It is a module now, and
+ * this is what asking for one looks like — one line, and every file below it
+ * comes with the feature rather than with a README telling you what to copy.
+ *
+ * A page is a route and nothing else: `#[Route]` on a layout class, with the
+ * document built by {@see \Empira\View\Layout}.
  */
 final class App
 {
@@ -70,58 +76,30 @@ final class App
         // threads racing each other through the same migration.
         self::publishDatabaseDefaults();
 
-        // A worker is per-thread and this stack runs 32 of them, so the rate
-        // limiter's state has to live where every thread can reach it. Binding
-        // it here means a component action can ask for it by type, the same way
-        // it asks for `Auth`.
+        // The ORM, mapped over this application's `src/` **and** the auth
+        // module's directory, so `DoctrineUserProvider` can find a `User`.
+        // `orm()` includes no directory of its own: a framework choosing its
+        // application's schema is a decision made on the application's behalf.
         //
-        // It gets its own connection rather than the ORM's: the unit of work is
-        // cleared between requests, and a limiter that shared it would have its
-        // counters cleared out from under it.
-        $app->container()->instance(RateLimiter::class, new RateLimiter(
-            DriverManager::getConnection(
-                DatabaseConfig::dbalParameters(new Config(self::databaseConfig()))
-            )
-        ));
-
-        // The ORM, mapped over this application's `src/` **and** the auth module's
-        // directory, so `DoctrineUserProvider` can find a `User`. `orm()` no
-        // longer includes the framework's own entities — a framework choosing
-        // its application's schema is a decision made on the application's
-        // behalf — so a module's entity path is named here, by the application.
+        // Drop this line and the module line together if you do not want
+        // authentication. Neither is useful alone — a module with no mapped
+        // entity cannot read a user, and a mapping with no module maps a table
+        // nobody asks anything about.
         $app->orm(self::databaseConfig(), [__DIR__, AuthModule::entityPath()]);
 
-        // Who is asking: a session cookie, which is an ambient credential and
-        // therefore the thing CSRF protection exists for. The components do
-        // their own CSRF check, so no global middleware is wired here.
+        // Authentication, installed rather than switched on.
         //
-        // The guard holds the *provider*, not an entity: the provider is handed
-        // an EntityManager that `Application::handle()` clears between requests,
-        // so a user loaded here belongs to this request and not to the worker.
+        // The guard is built from the application's *own* session — the same
+        // one the rest of the app writes to, not a fresh one. A guard reading a
+        // session nothing writes is a login form that reports "wrong password"
+        // forever, and it looks correct in review because the type is right.
         //
-        // Authentication is a module now, installed in one call. It registers
-        // its guards, publishes its own `Auth` façade for anything type-hinting
-        // it, and contributes the `users` table to `empira migrate`.
-        //
-        // The provider is built here rather than by `AuthModule::forApplication`
-        // because the repository below needs the same one — and a second
-        // provider over the same EntityManager is two objects that can disagree
-        // about whether a user exists.
-        $users = new DoctrineUserProvider($app->entities());
-
-        $app->module(new AuthModule([new SessionGuard($app->session(), $users)]));
-
-        $repository = new UserRepository($app->entities(), $users);
-
-        // The repository the form components ask for by type.
-        $app->container()->instance(UserRepository::class, $repository);
-
-        // The framework cannot know what this application's seeders look like,
-        // so it registers them and the console collects them after booting us.
-        $app->command('seed', new Seed($repository));
-
-        // Routes that are not pages: no layout, registered deliberately.
-        $app->registrar(Routing\AppRoutes::class);
+        // The provider holds no entity: it is handed an EntityManager that
+        // `Application::handle()` clears between requests, so a user loaded for
+        // one request belongs to that request and not to the worker.
+        $app->module(new AuthModule([
+            new SessionGuard($app->session(), new DoctrineUserProvider($app->entities())),
+        ]));
 
         // Where anything the framework or the app has to record goes. Before this
         // the framework logged nothing at all, so a genuine bug was re-thrown
@@ -129,8 +107,7 @@ final class App
         // nothing.
         $app->log(self::logger());
 
-        // Pages: every `#[Route]` under `src/`. Ordering is by specificity, so
-        // `/register` is matched before `/r/{anything}` should one ever exist.
+        // Pages: every `#[Route]` under `src/`, ordered by specificity.
         $app->discover(__DIR__, __NAMESPACE__);
 
         $app->onHttpError(static fn(int $status, string $message): string => sprintf(
@@ -157,6 +134,19 @@ final class App
      * already refuses to let a broken logger replace the exception it was
      * recording.
      */
+    /**
+ * Load `.env` into `$_ENV`, before anything reads configuration from it.
+ *
+ * The real environment wins: a variable already set — by Docker, by a shell, by
+ * a test — is not overwritten by the file. That ordering is the only interesting
+ * part, and getting it backwards makes a `.env` file silently override the
+ * deployment it was supposed to be overridden by.
+ */
+public static function loadEnvironment(string $basePath): void
+    {
+        $_ENV = array_merge(Env::fromFile($basePath . '/.env'), $_ENV);
+    }
+
     private static function logger(): LoggerInterface
     {
         $handler = new StreamHandler(
@@ -173,33 +163,31 @@ final class App
     /**
      * The configured level, falling back rather than refusing to boot.
      *
-     * `Level::fromName()` throws on anything it does not recognise, so a typo
-     * in LOG_LEVEL would otherwise take the whole application down at boot —
-     * and a typo in an environment variable is exactly the sort of thing that
-     * should not be able to stop a deploy. An unrecognised level logs
-     * everything instead: too much beats not starting.
+     * A bad `LOG_LEVEL` is a typo, and a typo should not stop the application
+     * from serving traffic — it should log at the default and say so, once.
      */
+    private static function logLevel(): Level
+    {
+        try {
+            return Level::fromName(strtolower((string) ($_ENV['LOG_LEVEL'] ?? 'info')));
+        } catch (\Throwable) {
+            return Level::Info;
+        }
+    }
+
     /**
-     * The token secret, refusing to run on the placeholder in production.
+     * The secret, refusing the placeholder outside a local environment.
      *
-     * The failure this guards against is silent, which is what makes it worth a
-     * boot check rather than a log line. A component token is
+     * The failure this guards against is silent, which is why it is a boot check
+     * and not a log line: a component token is
      * `base64url(payload).base64url(hmac)` and the payload carries the component
-     * class and its props — so with the secret in the open, anyone can mint a
-     * signed URL for any component carrying any props they like. Nothing
-     * 500s, nothing is written to any log, and the forged URL simply works.
+     * class and its props, so with the secret in the open anyone can mint a
+     * signed URL for any component with any props they like. Nothing 500s,
+     * nothing is logged, and the forged URL simply works.
      *
-     * Refusing to start is the only honest signal left.
-     *
-     * **This is opt-in, deliberately.** An unset `APP_ENV` counts as local, so
-     * the guard fires when someone sets `APP_ENV=production` and forgets the
-     * secret — not when they set neither. That is the same bargain Laravel and
-     * Symfony make, and it is worth being plain about what it does not catch: a
-     * deployment that configures nothing at all still starts on the
-     * placeholder. `docker-compose.yml` therefore takes `APP_ENV` from the
-     * environment, so the one flag that turns this on is easy to set.
-     *
-     * @throws \RuntimeException when the placeholder would be used in production
+     * **This is opt-in, and worth being plain about.** An unset `APP_ENV` counts
+     * as local, so the guard fires when somebody sets `APP_ENV=production` and
+     * forgets the secret — not when they set neither.
      */
     private static function secret(): string
     {
@@ -217,60 +205,9 @@ final class App
         ));
     }
 
-    /**
-     * Whether this is a development machine.
-     *
-     * Local **unless told otherwise**: unset is not a claim to be anything in
-     * particular, and refusing to start a developer's first run over a variable
-     * they have never heard of would be a worse failure than the one being
-     * guarded against.
-     */
     private static function isLocal(): bool
     {
         return ($_ENV['APP_ENV'] ?? 'local') === 'local';
-    }
-
-    private static function logLevel(): Level
-    {
-        try {
-            return Level::fromName(strtolower((string) ($_ENV['LOG_LEVEL'] ?? 'info')));
-        } catch (\UnhandledMatchError) {
-            return Level::Debug;
-        }
-    }
-
-    /**
-     * Write this application's database defaults into `$_ENV`, without
-     * overwriting anything that was already there.
-     *
-     * This exists because there were two readers of `DB_*` and two sets of
-     * defaults. `App::boot()` wanted `storage/app.sqlite`; `empira migrate`,
-     * reading the same variables through the framework, defaulted to `:memory:`
-     * — so `composer setup` migrated a database that vanished on exit and then
-     * seeded a real one that had no `users` table.
-     *
-     * The application owns the defaults, because only the application knows
-     * where its SQLite file lives. It publishes them once, at boot, and
-     * everything downstream — the runtime connection, the migration command, the
-     * seeder — reads the same answer. `composer setup` boots the application
-     * through `bootstrap/app.php`, which is how it inherits them too.
-     */
-    private static function publishDatabaseDefaults(): void
-    {
-        $defaults = [
-            'DB_DRIVER' => 'sqlite',
-            'DB_DATABASE' => dirname(__DIR__) . '/storage/app.sqlite',
-            'DB_HOST' => 'db',
-            'DB_PORT' => '0',
-            'DB_USERNAME' => '',
-            'DB_PASSWORD' => '',
-        ];
-
-        foreach ($defaults as $key => $value) {
-            if (!isset($_ENV[$key]) || $_ENV[$key] === '') {
-                $_ENV[$key] = $value;
-            }
-        }
     }
 
     /**
@@ -292,10 +229,30 @@ final class App
     }
 
     /**
-     * Load `.env` into `$_ENV` before anything reads configuration from it.
+     * Write this application's database defaults into `$_ENV` before anything
+     * reads them.
+     *
+     * There were once two readers with two sets of defaults — the runtime wanted
+     * `storage/app.sqlite`, the migration command read the same variables through
+     * the framework and got `:memory:` — and `composer setup` migrated a database
+     * that vanished on exit and then seeded a real one with no `users` table in
+     * it. One reader, one set of defaults, called first.
      */
-    public static function loadEnvironment(string $basePath): void
+    private static function publishDatabaseDefaults(): void
     {
-        $_ENV = array_merge(Env::fromFile($basePath . '/.env'), $_ENV);
+        $defaults = [
+            'DB_DRIVER' => 'sqlite',
+            'DB_DATABASE' => dirname(__DIR__) . '/storage/app.sqlite',
+            'DB_HOST' => 'db',
+            'DB_PORT' => '0',
+            'DB_USERNAME' => '',
+            'DB_PASSWORD' => '',
+        ];
+
+        foreach ($defaults as $key => $value) {
+            if (!isset($_ENV[$key]) || $_ENV[$key] === '') {
+                $_ENV[$key] = $value;
+            }
+        }
     }
 }
