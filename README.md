@@ -1,6 +1,6 @@
 # Empira app
 
-A bare skeleton for [Empira](../principle): the smallest application that boots
+A bare skeleton for [Empira](https://github.com/iam-adty/empira-principle): the smallest application that boots
 and serves, and the answer to "how do I wire this up?".
 
 It is three files of source — [`src/App.php`](src/App.php) does the wiring,
@@ -15,7 +15,7 @@ demo credentials seeded on first boot. Every one of those is a thing to *remove*
 and removal is slower than never having it.
 
 For worked examples, read the packages' own suites: authentication in
-[`../auth`](../auth), components and routing in the framework.
+[empira-auth](https://github.com/iam-adty/empira-auth), components and routing in the framework.
 
 ## Run it
 
@@ -66,5 +66,5 @@ A page is a route and nothing else. `App::boot()` discovers everything under
 which is also why a component rendered only by another component needs no
 registration of its own.
 
-See [AGENTS.md](https://github.com/iam-adty/empira-dev/blob/main/agents/principle.md) for the wiring, the traps, and why there is no seed
+See [AGENTS.md](https://github.com/iam-adty/empira-dev/blob/main/agents/app.md) for the wiring, the traps, and why there is no seed
 command.
