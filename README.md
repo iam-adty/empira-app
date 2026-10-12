@@ -66,5 +66,5 @@ A page is a route and nothing else. `App::boot()` discovers everything under
 which is also why a component rendered only by another component needs no
 registration of its own.
 
-See [AGENTS.md](https://github.com/iam-adty/empira-dev/blob/main/AGENTS.md../) for the wiring, the traps, and why there is no seed
+See [AGENTS.md](https://github.com/iam-adty/empira-dev/blob/main/agents/principle.md) for the wiring, the traps, and why there is no seed
 command.
