@@ -41,14 +41,23 @@ WORKDIR /app
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# `/principle`, deliberately outside `/workspace`: at runtime the workspace is
-# bind-mounted over `/workspace`, and a build-time path underneath that mount is
-# a trap for whoever reads this next.
+# `/principle` and `/auth`, deliberately outside `/workspace`: at runtime the
+# workspace is bind-mounted over `/workspace`, and a build-time path underneath
+# that mount is a trap for whoever reads this next.
+#
+# Both are Composer path packages that are not published, so each needs naming
+# here as well as in `composer.json`. An application's dependency on a module is
+# exactly as real as its dependency on the framework, and the module is what
+# brings the `users` table — so an image that installed the framework but not
+# the module would boot into an application with no way to sign anybody in.
 COPY principle /principle
+COPY auth /auth
 COPY app/composer.json ./composer.json
 
 RUN composer config repositories.principle \
         '{"type":"path","url":"/principle","options":{"symlink":false,"versions":{"iam-adty/empira-principle":"dev-main"}}}' \
+    && composer config repositories.empira-auth \
+        '{"type":"path","url":"/auth","options":{"symlink":false,"versions":{"iam-adty/empira-auth":"dev-main"}}}' \
     && composer install --no-interaction --no-progress --no-dev
 
 COPY app/ .

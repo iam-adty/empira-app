@@ -123,5 +123,12 @@ services:
       # Mounted deeper than the volume above, so Docker applies it last.
       - ../principle/src:/workspace/app/vendor/iam-adty/empira-principle/src
 
+      # The auth module is a dependency exactly as the framework is, so it gets
+      # the same treatment — an edit under `auth/src` is an edit in the running
+      # container, with no rebuild. Forgetting this one is the kind of omission
+      # that costs an hour: the image has a copy, the container has a stale one,
+      # and the symptom is a change that "did not take".
+      - ../auth/src:/workspace/app/vendor/iam-adty/empira-auth/src
+
 volumes:
   vendor:

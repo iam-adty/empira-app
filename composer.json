@@ -4,6 +4,7 @@
     "type": "project",
     "license": "MIT",
     "require": {
+        "iam-adty/empira-auth": "dev-main",
         "iam-adty/empira-principle": "dev-main",
         "monolog/monolog": "^3.12"
     },
@@ -36,5 +37,10 @@
         "allow-plugins": {
             "franzl/studio": true
         }
-    }
+    },
+    "repositories": [{
+        "name": "empira-auth",
+        "type": "path",
+        "url": "../auth"
+    }]
 }

@@ -9,6 +9,7 @@ use App\Console\Seed;
 use App\RateLimit\RateLimiter;
 use Doctrine\DBAL\DriverManager;
 use Empira\Application;
+use Empira\Auth\AuthModule;
 use Empira\Auth\DoctrineUserProvider;
 use Empira\Auth\SessionGuard;
 use Empira\Config\Config;
@@ -83,10 +84,12 @@ final class App
             )
         ));
 
-        // The ORM, mapped over `src/` — this application's entities, plus the
-        // framework's own `Auth` ones, which `orm()` always includes so that
-        // `DoctrineUserProvider` can find a user.
-        $app->orm(self::databaseConfig(), [__DIR__]);
+        // The ORM, mapped over this application's `src/` **and** the auth module's
+        // directory, so `DoctrineUserProvider` can find a `User`. `orm()` no
+        // longer includes the framework's own entities — a framework choosing
+        // its application's schema is a decision made on the application's
+        // behalf — so a module's entity path is named here, by the application.
+        $app->orm(self::databaseConfig(), [__DIR__, AuthModule::entityPath()]);
 
         // Who is asking: a session cookie, which is an ambient credential and
         // therefore the thing CSRF protection exists for. The components do
@@ -95,9 +98,18 @@ final class App
         // The guard holds the *provider*, not an entity: the provider is handed
         // an EntityManager that `Application::handle()` clears between requests,
         // so a user loaded here belongs to this request and not to the worker.
+        //
+        // Authentication is a module now, installed in one call. It registers
+        // its guards, publishes its own `Auth` façade for anything type-hinting
+        // it, and contributes the `users` table to `empira migrate`.
+        //
+        // The provider is built here rather than by `AuthModule::forApplication`
+        // because the repository below needs the same one — and a second
+        // provider over the same EntityManager is two objects that can disagree
+        // about whether a user exists.
         $users = new DoctrineUserProvider($app->entities());
 
-        $app->auth(new SessionGuard($app->session(), $users));
+        $app->module(new AuthModule([new SessionGuard($app->session(), $users)]));
 
         $repository = new UserRepository($app->entities(), $users);
 

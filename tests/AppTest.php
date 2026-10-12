@@ -101,8 +101,20 @@ private static function runConsole(array $argv): array
 
             $console = new Console\Application();
 
-            foreach (Console\Bootstrap::commandsFor(dirname(__DIR__)) as $name => $projectCommand) {
-                $console->project($name, $projectCommand);
+            // Exactly what `bin/empira` does, and the reason is not tidiness:
+            // `migrate` plans across the migrations *modules* contribute, and it
+            // learns those from the booted application. A test that drove the
+            // console without handing it the booted app would migrate a schema
+            // with no `users` table and then fail at the seed with "no such
+            // table" — pointing at the database rather than at the wiring.
+            $booted = Console\Bootstrap::boot(dirname(__DIR__));
+
+            if ($booted !== null) {
+                foreach ($booted->commands() as $name => $projectCommand) {
+                    $console->project($name, $projectCommand);
+                }
+
+                $console->booted($booted);
             }
 
             $exit = $console->run(array_merge(['empira'], $argv), $output);
