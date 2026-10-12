@@ -5,9 +5,3 @@
 
 # SQLite database created on first boot.
 storage/*.sqlite
-
-# Local Docker overrides. Compose loads this automatically; it points at
-# sibling checkouts, so it is only meaningful on a machine that has them, and
-# committing it would make the committed compose file depend on a directory
-# nobody else has.
-docker-compose.override.yml

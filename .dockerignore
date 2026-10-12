@@ -1,5 +1,0 @@
-.git
-vendor
-storage/*.sqlite
-composer.lock
-.idea
