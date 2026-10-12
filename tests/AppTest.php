@@ -65,6 +65,28 @@ final class AppTest extends TestCase
         self::runConsole(['migrate']);
     }
 
+    /**
+     * Remove the database this class created.
+     *
+     * The workspace `tmp/` is shared by all three suites and is documented as
+     * holding nothing between runs — `ls -A tmp` is the check. A SQLite file
+     * left behind is a stale schema that a later run reads as its own, and a
+     * directory nobody trusts is a directory nobody checks.
+     *
+     * This method went missing when the suite was reduced from 45 tests to 15
+     * and the fixture was rebuilt, which is exactly the kind of loss that a
+     * shrinking suite invites: the lines that are not a test are the first
+     * things to look optional.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$database !== '' && is_file(self::$database)) {
+            unlink(self::$database);
+        }
+
+        self::$database = '';
+    }
+
     protected function tearDown(): void
     {
         if (isset($_SESSION)) {
