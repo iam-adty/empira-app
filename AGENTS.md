@@ -9,7 +9,7 @@ wire this up?" has an answer you can read in one sitting.
 ## Commands
 
 ```bash
-composer test                       # 30 tests, 89 assertions
+composer test                       # 45 tests, 128 assertions
 composer serve                      # http://localhost:8000
 vendor/bin/empira migrate           # the schema, before anything serves
 vendor/bin/empira seed              # the demo account
@@ -123,6 +123,9 @@ If you do not see a change, check that symlink first; do not reinstall.
 
 ## Conventions
 
+- **Plans go in the todo tool**, so they show in the opencode TUI sidebar. The
+  rule itself is one level up, in the workspace
+  [`AGENTS.md`](../AGENTS.md), because it is not specific to this package.
 - `App\` namespace under `src/`, PSR-4.
 - Components extend `IamAdty\Empira\Component` and return an `Element`.
 - An action **returns void**; it responds by mutating props and the response.
@@ -211,11 +214,20 @@ php vendor/bin/empira seed           # this app's, registered at boot
 because a deploy step is allowed to be run twice — a retried pipeline should not
 fail on a seed that already happened.
 
-A seeded account, so there is something to sign in as:
+The seeded accounts, so there is something to sign in as:
 
 ```
-ada@example.com  /  correct horse battery staple
+ada@example.com    /  correct horse battery staple
+test@example.com   /  test1234
 ```
+
+`test1234` and not `test`: the sign-up form requires eight characters, and a
+seeded account the application would itself refuse to create is a fixture that
+breaks its own rules.
+
+`empira seed --email=… --name=… --password=…` seeds one account instead of the
+set. `--name` exists because the name used to be hardcoded to `Ada Lovelace`, so
+anything you seeded came out called Ada.
 
 ## Account switching is closed on purpose
 
@@ -223,6 +235,48 @@ ada@example.com  /  correct horse battery staple
 `/register`, so the only way to become a different user is to sign out first.
 That is deliberate — the absence of this middleware is not an oversight, and
 neither is the absence of a "switch account" link.
+
+## Rate limiting and registration
+
+Both live in the `rate_limits` table, which is a **deliberate choice and not the
+obvious one**. The obvious implementation is an array in a static property, and
+it is wrong here: a worker is per-thread and this stack runs **32 of them**, so
+each would keep its own tally and the limit actually in force would be *thirty-two
+times* the configured one — silently, and in the direction that makes the limit
+worthless. Same trap as the session and the ORM's identity map, same answer:
+state that outlives a process.
+
+| What | Default | Environment |
+|---|---|---|
+| Failed sign-ins, per email | 5 / 15 min | `RATE_LIMIT_LOGIN_EMAIL`, `RATE_LIMIT_WINDOW` |
+| Failed sign-ins, per address | 20 / 15 min | `RATE_LIMIT_LOGIN_IP` |
+| Registrations, per address | 3 / hour | `RATE_LIMIT_REGISTER`, `RATE_LIMIT_REGISTER_WINDOW` |
+
+The per-address limit is **much** looser than the per-email one, on purpose.
+Every session from a developer reaching this WSL-hosted application arrives from
+the same relayed address, so a tight figure there locks the owner out of their
+own demo and buys little — an attacker with several addresses just moves between
+them. The per-email limit is the one actually defending an account.
+
+Two details that decide whether this is usable at all:
+
+- **Failures are counted, successes forget them.** Counting every attempt would
+  lock somebody out of their own account after five honest sign-ins.
+- **Checking is not trying.** `isBlocked()` is read-only and never records, so a
+  bot walking the login page cannot spend somebody else's allowance.
+
+**The log distinguishes what the page must not.** An unknown address, a wrong
+password and a refused attempt all answer the visitor with the same message —
+telling them apart is an account-existence oracle, and "too many attempts" would
+tell an attacker they were being watched and exactly how long to wait. The log
+records `no such user`, `password did not match`, or `rate limited`, with the
+address as typed and **never the password**.
+
+`REGISTRATION=closed` makes `/register` a 404 and takes its two links with it.
+Open unless the environment says otherwise, so nothing changes until somebody
+decides otherwise. The page gate is not sufficient: the form posts to its own
+signed component URL, which no route middleware sees, so **the action checks for
+itself** — the same trap `RedirectIfAuthenticated` documents.
 
 ## Running it
 
@@ -238,6 +292,25 @@ differently. `FRANKENPHP_WORKERS=1` forces a single worker — a diagnostic, not
 setting. It matters because at 2 × CPU a state leak only surfaces when two
 consecutive requests land on the same worker, about one time in 32, so it hides
 from you exactly when you are looking for it.
+
+**`MAX_REQUESTS` is this application's own loop bound**, read by
+`public/index.php` and not by FrankenPHP. FrankenPHP has its own
+`worker.max_requests` setting, it is reported as `max_requests` in the startup
+log, and it is **not** what is configured here — the startup line reading
+`max_requests: 0` is not a misconfiguration, it is a different mechanism this
+app does not use. Do not "fix" one by renaming the other.
+
+### The port binding, and WSL
+
+`ports: "8080:8080"` rather than `127.0.0.1:8080:8080`. WSL2 relays Windows to
+the WSL VM's network rather than sharing it, so a localhost binding on the WSL
+side is **not reachable from the Windows host** and there is no browser to test
+with.
+
+The cost, written down rather than discovered: anything that can route to the
+WSL address can reach the application, including the demo credentials above and
+the placeholder secret. `APP_ENV=production` is what arms the refusal to start
+on that secret.
 
 ## `APP_SECRET`
 
