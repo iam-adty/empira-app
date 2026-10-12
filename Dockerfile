@@ -52,7 +52,15 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # the module would boot into an application with no way to sign anybody in.
 COPY principle /principle
 COPY auth /auth
+
+# The lock is copied as well as the manifest, and that is the whole point: an
+# application that commits its lock is reproducible only if the build reads it.
+# `composer install` uses it when present and resolves afresh when it is not, so
+# a build that copied only `composer.json` produced an image pinned to whatever
+# the libraries' `main` happened to be that afternoon — a different commit from
+# the one the host had installed, and nothing in the output said so.
 COPY app/composer.json ./composer.json
+COPY app/composer.lock ./composer.lock
 
 # Say what is wrong rather than failing three COPYs later with no explanation.
 # The build context is the workspace root, so a missing sibling is the one

@@ -49,7 +49,14 @@ services:
       # on :2019 — and `php-server run` disables that endpoint, so it can never
       # pass. It also asked the wrong question: the admin port being open says
       # nothing about whether PHP is serving. This one asks that.
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8080/login || exit 1"]
+      #
+      # It points at `/`, the one route this application has. It used to point
+      # at `/login`, which the demo had and the skeleton does not — so the check
+      # failed forever on a container serving a perfectly good 200, and anything
+      # waiting for health (`up --wait`, a dependant's `condition:`) hung on a
+      # service that was already working. A healthcheck that cannot pass is
+      # worse than none: it is a claim about the service that is not true.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:8080/ || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 6
@@ -112,23 +119,24 @@ services:
       # …and vendor/ is not shadowed by that mount, or a fresh clone would have
       # no dependencies at all.
       - vendor:/workspace/app/vendor
-      # The framework's source, live, over the copy the image baked in.
+
+      # The libraries are **not** mounted over. What runs in the container is
+      # what `composer.lock` pins, which is what a cloner expects and what a
+      # deploy needs: one application, one known set of library versions.
       #
-      # Without this the image's copy wins and verifying a framework edit means
-      # rebuilding the image — minutes per check, which is how "just rebuild it"
-      # becomes the path of least resistance. The autoloader is PSR-4 (no
-      # `optimize-autoloader`, no authoritative classmap), so this needs no
-      # autoload regeneration: edits resolve, and so do new files.
+      # Developing a library and wanting it live in the running container is a
+      # local arrangement, so it lives in `docker-compose.override.yml`, which
+      # Compose loads automatically and which is not committed. Keeping it here
+      # would mean a committed file referencing `../principle` — a path that does
+      # not exist in anybody else's checkout, failing with a bare `COPY failed`
+      # or a dangling mount.
+      #
+      # They were mounted here once, and only `src/` of each: a package split
+      # between the working copy and the image, where a new class arrived
+      # instantly and the migration creating its table did not. The override
+      # mounts each package whole.
       #
       # Mounted deeper than the volume above, so Docker applies it last.
-      - ../principle/src:/workspace/app/vendor/iam-adty/empira-principle/src
-
-      # The auth module is a dependency exactly as the framework is, so it gets
-      # the same treatment — an edit under `auth/src` is an edit in the running
-      # container, with no rebuild. Forgetting this one is the kind of omission
-      # that costs an hour: the image has a copy, the container has a stale one,
-      # and the symptom is a change that "did not take".
-      - ../auth/src:/workspace/app/vendor/iam-adty/empira-auth/src
 
 volumes:
   vendor:
