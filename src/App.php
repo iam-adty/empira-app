@@ -40,13 +40,40 @@ use Psr\Log\LoggerInterface;
 final class App
 {
     /**
-     * The demo secret, and the only value this application will start on
-     * outside a local environment.
+     * The configuration keys this application owns, read from `.env` and from
+     * nowhere else.
      *
-     * It is public because it has to be recognisable, not secret — anyone can
-     * read it here, which is exactly why {@see boot()} refuses it in production.
+     * Declared rather than derived, because {@see loadEnvironment()} has to
+     * decide what to discard before it has read anything, and the alternative —
+     * keeping every inherited value that the file happens not to mention —
+     * means the shell is still a configuration source, quietly, for exactly the
+     * keys someone forgot to write down.
+     *
+     * Each of these is read somewhere: `APP_ENV` by installed modules that ask
+     * whether this is a development environment, `APP_SECRET` by
+     * {@see secret()}, `LOG_STREAM` and `LOG_LEVEL` by {@see logger()},
+     * `DB_DRIVER` and `DB_DATABASE` by {@see publishDatabaseDefaults()} and again
+     * by the framework's own database configuration.
+     *
+     * `EMPIRA_BOOTSTRAP` is absent and cannot be here: `Console\Bootstrap` reads
+     * it to decide which file to require, so it is consulted before this
+     * application has loaded anything at all.
+     *
+     * The cost of the rule is worth stating once. Injected environment variables
+     * stop reaching the application — `docker run -e`, a Kubernetes
+     * `envFrom:` Secret, `Environment=` in a unit file, a CI secret — because
+     * the value never arrives in `$_ENV`. A deployment supplies a real `.env`
+     * file instead, which means the secret is on disk and belongs in a file mode
+     * its owner cannot read.
      */
-    public const SECRET = 'dev-secret-change-me-please-32b';
+    private const CONFIG_KEYS = [
+        'APP_ENV',
+        'APP_SECRET',
+        'LOG_STREAM',
+        'LOG_LEVEL',
+        'DB_DRIVER',
+        'DB_DATABASE',
+    ];
 
     /**
      * The application, for serving web requests.
@@ -177,7 +204,21 @@ final class App
  */
     public static function loadEnvironment(string $basePath): void
     {
-        $_ENV = array_merge(Env::fromFile($basePath . '/.env'), $_ENV);
+        // Stripped before the file is read, not after. Merging the other way
+        // round — file first, inherited second, which is the dotenv convention —
+        // means anything the shell exported wins, so `export APP_ENV=production`
+        // in a terminal silently changes what a development machine serves. Two
+        // answers to "what configuration is in effect", one of them invisible.
+        //
+        // Unsetting rather than merely overwriting is what makes the guarantee
+        // complete: a key `.env` does not mention falls through to this
+        // application's own default instead of being inherited from outside,
+        // where a stale export would otherwise outlive the line that set it.
+        foreach (self::CONFIG_KEYS as $key) {
+            unset($_ENV[$key]);
+        }
+
+        $_ENV = array_merge($_ENV, Env::fromFile($basePath . '/.env'));
     }
 
     /**
@@ -236,7 +277,7 @@ final class App
     }
 
     /**
-     * The secret, refusing the placeholder outside a local environment.
+     * The secret, required.
      *
      * The failure this guards against is silent, which is why it is a boot check
      * and not a log line: a component token is
@@ -245,29 +286,42 @@ final class App
      * signed URL for any component with any props they like. Nothing 500s,
      * nothing is logged, and the forged URL simply works.
      *
-     * **This is opt-in, and worth being plain about.** An unset `APP_ENV` counts
-     * as local, so the guard fires when somebody sets `APP_ENV=production` and
-     * forgets the secret — not when they set neither.
+     * ## Why there is no fallback
+     *
+     * There was one, and it was a constant in this file — a demo value the
+     * application started on, permitted outside a local environment only. That
+     * was worse than it looks. The value was public in three places (this file,
+     * `.env.example`, and every clone on GitHub), so "change it before
+     * deploying" was a step every deployment had to remember, and the guard that
+     * was supposed to catch the ones that forgot depended on `APP_ENV` being set
+     * correctly. Set neither and you were serving forgeable component URLs on
+     * every interface `composer serve` binds.
+     *
+     * So the secret is now read from `.env` and there is nothing to fall back to.
+     * A missing one stops the application in every environment, which makes the
+     * first run of a fresh clone one step longer and every deploy one safer.
+     *
+     * The 16-byte floor is {@see \Empira\TokenCodec}'s, enforced here as well so
+     * that a too-short value is reported as what it is — a configuration mistake
+     * — rather than as a generic argument error from a constructor two layers
+     * down.
      */
     private static function secret(): string
     {
-        $secret = (string) ($_ENV['APP_SECRET'] ?? self::SECRET);
+        $secret = (string) ($_ENV['APP_SECRET'] ?? '');
 
-        if ($secret !== self::SECRET || self::isLocal()) {
+        if (strlen($secret) >= 16) {
             return $secret;
         }
 
         throw new \RuntimeException(sprintf(
-            'Refusing to start with the placeholder APP_SECRET outside a local environment. '
-            . 'Generate one with: php -r \'echo bin2hex(random_bytes(32)), PHP_EOL;\' and set it in '
-            . 'APP_SECRET. It must be at least 16 bytes, and it must not change between deploys — '
-            . 'changing it invalidates every component link already in a user\'s history.'
+            'APP_SECRET is %s. Generate one with: php -r \'echo bin2hex(random_bytes(32)), PHP_EOL;\' '
+            . 'and put it in %s beside the rest of .env.example. It must be at least 16 bytes, and it '
+            . 'must not change between deploys — changing it invalidates every component link already '
+            . 'in a user\'s history.',
+            $secret === '' ? 'not set' : sprintf('too short (%d bytes, 16 needed)', strlen($secret)),
+            self::basePath('.env'),
         ));
-    }
-
-    private static function isLocal(): bool
-    {
-        return ($_ENV['APP_ENV'] ?? 'local') === 'local';
     }
 
     /**
