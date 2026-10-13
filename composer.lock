@@ -928,12 +928,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/iam-adty/empira-principle.git",
-                "reference": "1a584c8688c39dcd2413b96e3ad40261047fa6f1"
+                "reference": "4c784c0730696d4b107388de1c1078d4b726c2cc"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/1a584c8688c39dcd2413b96e3ad40261047fa6f1",
-                "reference": "1a584c8688c39dcd2413b96e3ad40261047fa6f1",
+                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/4c784c0730696d4b107388de1c1078d4b726c2cc",
+                "reference": "4c784c0730696d4b107388de1c1078d4b726c2cc",
                 "shasum": ""
             },
             "require": {
@@ -996,7 +996,7 @@
                 "source": "https://github.com/iam-adty/empira-principle/tree/main",
                 "issues": "https://github.com/iam-adty/empira-principle/issues"
             },
-            "time": "2026-10-13T04:08:13+00:00"
+            "time": "2026-10-13T04:42:48+00:00"
         },
         {
             "name": "monolog/monolog",

@@ -21,27 +21,29 @@ For worked examples, read the packages' own suites: authentication in
 
 ```bash
 composer install
-composer serve           # http://localhost:8000
+composer serve           # every interface, port 8000
 ```
 
-Or with the framework's console, which handles the paths for you:
+That is the framework's console rather than a raw `php -S`:
+`vendor/bin/empira serve --host=0.0.0.0`. It prints what it started and re-runs
+on request.
+
+It binds **every interface**, so the page answers on `localhost:8000` and on this
+machine's address on your network. A development server reachable only from the
+box it runs on is awkward when the box is a VM, so the bind is deliberate.
+
+**It is also serving the placeholder secret to that network.** `.env.example` is
+a demo value, and `App::boot()` refuses it only when `APP_ENV` is set to
+`production` — unset counts as local. Anything that can reach the port can mint a
+signed component URL and have the application fetch any component with any props.
+Nothing logs it and nothing 500s; the forged URL simply works. Set `APP_SECRET`
+before serving this on a network you do not control:
 
 ```bash
-vendor/bin/empira serve
+php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
 ```
 
-With Docker — nginx and php-fpm against PostgreSQL, and no image to build:
-
-```bash
-docker compose up -d      # http://localhost:8080
-docker compose down -v
-```
-
-Both server images are stock and the workspace is bind-mounted, so an edit in
-`src/` or in a sibling library's `src/` is live in the running container. The one
-sharp edge is that `php:8.4-fpm-alpine` has no `pdo_pgsql`, and the fix is an
-explicit `-d extension=` flag on the `php-fpm` binary — the compose file explains
-why it has to be a flag and not a pool setting.
+Pass `--host=127.0.0.1` to keep it on loopback.
 
 Worker mode is optional and lives in its own package,
 [empira-frankenphp](https://github.com/iam-adty/empira-frankenphp). This
