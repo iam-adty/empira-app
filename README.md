@@ -21,8 +21,24 @@ For worked examples, read the packages' own suites: authentication in
 
 ```bash
 composer install
-composer serve           # every interface, port 8000
+cp .env.example .env    # then paste a generated secret into APP_SECRET
+composer serve          # every interface, port 8000
 ```
+
+`.env` is required, not optional. `APP_SECRET` signs every component URL, and
+there is no default for it — the application refuses to start until one is
+present, because a fallback would be a public constant, which is a forgeable
+constant. Generate one:
+
+```bash
+php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
+```
+
+`.env` is also the application's **only** source of configuration. Anything
+exported in your shell is discarded before the file is read, so "what is
+configured" has one answer you can read in one file. The trade is that a
+deployment has to supply a real `.env` rather than injected environment
+variables — see `App::CONFIG_KEYS`.
 
 That is the framework's console rather than a raw `php -S`:
 `vendor/bin/empira serve --host=0.0.0.0`. It prints what it started and re-runs
@@ -32,16 +48,10 @@ It binds **every interface**, so the page answers on `localhost:8000` and on thi
 machine's address on your network. A development server reachable only from the
 box it runs on is awkward when the box is a VM, so the bind is deliberate.
 
-**It is also serving the placeholder secret to that network.** `.env.example` is
-a demo value, and `App::boot()` refuses it only when `APP_ENV` is set to
-`production` — unset counts as local. Anything that can reach the port can mint a
-signed component URL and have the application fetch any component with any props.
-Nothing logs it and nothing 500s; the forged URL simply works. Set `APP_SECRET`
-before serving this on a network you do not control:
-
-```bash
-php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
-```
+**That means your secret is on the network.** Anything that can reach the port
+can mint a signed component URL and have the application fetch any component with
+any props. Nothing logs it and nothing 500s; the forged URL simply works. Use
+`--host=127.0.0.1` on a network you do not control.
 
 Pass `--host=127.0.0.1` to keep it on loopback.
 
