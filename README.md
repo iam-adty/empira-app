@@ -49,14 +49,23 @@ application does not install it and does not need to.
 
 ## Test it
 
+You cannot, and that is the design.
+
+This repository ships no test suite and no test tooling. It is the thing you
+copy, so anything committed here is something you inherit without asking — and a
+skeleton arrives with a working suite far more easily than it arrives without
+one. The application it describes is small enough that the useful thing to check
+is whether it boots and serves, which takes one command:
+
 ```bash
-composer test
+composer install
+php -S localhost:8000 -t public public/index.php   # then open http://localhost:8000
 ```
 
-16 tests, and they are all one question: **does this boot, and does it serve?**
-The page renders, an htmx request gets only its region, an unknown route 404s,
-the installed module publishes its façade and brings its own table, and the
-placeholder-secret guard still refuses to start outside a local environment.
+For a real suite against this skeleton, use the workspace's scratch
+application, which is generated from this repository and throws its edits away:
+`dev/tools/app-test check` in the
+[workspace](https://github.com/iam-adty/empira-dev).
 
 ## What you would add
 
