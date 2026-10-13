@@ -70,10 +70,10 @@ final class App
         // A SQLite file by default, so `composer serve` needs no services. The
         // Docker compose overrides these through the environment.
         //
-        // Note the schema is *not* migrated here. Migrating and seeding are
-        // deploy steps — `empira migrate`, then `empira seed` — because boot is
-        // per worker thread, and a boot that migrates is a boot that has eleven
-        // threads racing each other through the same migration.
+        // Note the schema is *not* migrated here. Migrating is a deploy step —
+        // `empira migrate` — because boot is per worker thread, and a boot that
+        // migrates is a boot that has eleven threads racing each other through
+        // the same migration.
         self::publishDatabaseDefaults();
 
         // The ORM, mapped over this application's `src/` **and** the auth
@@ -251,9 +251,10 @@ final class App
      *
      * There were once two readers with two sets of defaults — the runtime wanted
      * `storage/app.sqlite`, the migration command read the same variables through
-     * the framework and got `:memory:` — and `composer setup` migrated a database
-     * that vanished on exit and then seeded a real one with no `users` table in
-     * it. One reader, one set of defaults, called first.
+     * the framework and got `:memory:` — and the migration against `:memory:` was
+     * a database that vanished on exit, followed by an application querying a real
+     * one with no `users` table in it. One reader, one set of defaults, called
+     * first.
      */
     private static function publishDatabaseDefaults(): void
     {

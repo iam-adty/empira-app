@@ -8,33 +8,19 @@
         "iam-adty/empira-principle": "dev-main",
         "monolog/monolog": "^3.12"
     },
-    "require-dev": {
-        "phpunit/phpunit": "^10.5"
-    },
     "autoload": {
         "psr-4": {
             "App\\": "src/"
         }
     },
-    "autoload-dev": {
-        "psr-4": {
-            "App\\Tests\\": "tests/"
-        }
-    },
     "scripts": {
-        "test": "tools/test",
-        "setup": [
-            "@migrate",
-            "@seed"
-        ],
         "migrate": "php vendor/bin/empira migrate",
-        "seed": "php vendor/bin/empira seed",
         "serve": "php -S localhost:8000 -t public public/index.php"
     },
     "config": {
         "sort-packages": true
     },
-    "//repositories": "Neither library is on Packagist yet, so both resolve from GitHub. `dev-main` tracks the branch rather than a release, so an application install follows whatever the libraries' `main` currently is — reproducible only while `composer.lock` is committed, which it is. The local path repositories that used to sit here made a sibling checkout resolve offline, at the cost of not working from a clone at all.",
+    "//repositories": "Neither library is on Packagist yet, so both resolve from GitHub. `dev-main` tracks the branch rather than a release, so an application install follows whatever the libraries' `main` currently is \u2014 reproducible only while `composer.lock` is committed, which it is. The local path repositories that used to sit here made a sibling checkout resolve offline, at the cost of not working from a clone at all.",
     "repositories": [
         {
             "type": "vcs",
