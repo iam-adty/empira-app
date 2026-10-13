@@ -48,12 +48,56 @@ final class App
      */
     public const SECRET = 'dev-secret-change-me-please-32b';
 
-    public static function boot(?StateStore $state = null, bool $csrf = true): Application
+    /**
+     * The application, for serving web requests.
+     *
+     * This is the entry point `public/index.php` uses and the only one that
+     * enables CSRF. The console has its own — {@see bootConsole()} — because a
+     * command line has no cookies to protect and no session to protect them in.
+     */
+    public static function boot(?StateStore $state = null): Application
+    {
+        return self::build($state, new Csrf());
+    }
+
+    /**
+     * The application, for the `empira` console.
+     *
+     * Same wiring as {@see boot()} — the ORM, the modules, the routes — because
+     * `empira migrate` needs the modules and `empira route:list` needs the
+     * routes, and a console that saw less than the web would be a second,
+     * smaller application rather than the same one. The one difference is CSRF,
+     * which is a property of a browser session and has no meaning here.
+     *
+     * Split from `boot()` rather than flagged inside it: `csrf: false` read as an
+     * argument to a method named for the web was a contradiction, and the next
+     * console-only concern would have arrived as a second boolean. Two named
+     * entry points put the choice where it belongs.
+     *
+     * Command discovery is **not** here. It is in `bootstrap/app.php`, which is
+     * the console's own entry — this class builds an application, and what an
+     * application chooses to expose on a command line is the application's
+     * business.
+     */
+    public static function bootConsole(?StateStore $state = null): Application
+    {
+        return self::build($state, null);
+    }
+
+    /**
+     * The wiring, shared by both entry points.
+     *
+     * One copy, so the console can never drift from the web — which is the
+     * failure that would be invisible until somebody ran `empira migrate` against
+     * an application whose modules had not been registered, and got a schema
+     * missing every table the module is responsible for.
+     */
+    private static function build(?StateStore $state, ?Csrf $csrf): Application
     {
         $app = new Application(
             secret: self::secret(),
             state: $state ?? new SessionState(),
-            csrf: $csrf ? new Csrf() : null,
+            csrf: $csrf,
         );
 
         // A token may only resolve a reachable class, and reachability is a
