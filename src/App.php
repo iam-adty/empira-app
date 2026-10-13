@@ -111,8 +111,8 @@ final class App
         // be short or survive the class moving namespaces.
         $app->components(__NAMESPACE__ . '\\');
 
-        // A SQLite file by default, so `composer serve` needs no services. The
-        // Docker compose overrides these through the environment.
+        // A SQLite file by default, so `composer serve` needs nothing installed
+        // and nothing running. `DB_DATABASE` in the environment moves it.
         //
         // Note the schema is *not* migrated here. Migrating is a deploy step —
         // `empira migrate` — because boot is per worker thread, and a boot that
@@ -170,8 +170,8 @@ final class App
     /**
  * Load `.env` into `$_ENV`, before anything reads configuration from it.
  *
- * The real environment wins: a variable already set — by Docker, by a shell, by
- * a test — is not overwritten by the file. That ordering is the only interesting
+ * The real environment wins: a variable already set — by the shell, by a
+ * process manager, by a test — is not overwritten by the file. That ordering is the only interesting
  * part, and getting it backwards makes a `.env` file silently override the
  * deployment it was supposed to be overridden by.
  */
@@ -197,11 +197,10 @@ final class App
     /**
      * A Monolog logger writing JSON to stderr.
      *
-     * stderr rather than a file, because a container has nowhere to keep a log
-     * across a restart and `docker compose logs` is where anybody actually
-     * looks. JSON rather than Monolog's default line format, because these lines
-     * are meant to be read by something: `jq` over a stream of records beats
-     * grepping a stack trace out of prose.
+     * stderr rather than a file, because a log file needs rotating and cleaning
+     * and nobody reads one during development. JSON rather than Monolog's default
+     * line format, because these lines are meant to be read by something: `jq`
+     * over a stream of records beats grepping a stack trace out of prose.
      *
      * Nothing here catches its own failure. A logger that dies mid-write is a
      * smaller problem than the 500 it caused, and `Application::logFailure()`
@@ -275,6 +274,11 @@ final class App
      * Database settings, from the environment — which {@see
      * publishDatabaseDefaults()} has already filled in.
      *
+     * Two settings, because SQLite is the only driver. `DB_HOST`, `DB_PORT`,
+     * `DB_USERNAME` and `DB_PASSWORD` went when the framework's support for
+     * PostgreSQL and MySQL did; `DB_HOST` defaulted to `db`, which was the name
+     * of a compose service, so it was already meaningless to anyone else.
+     *
      * @return array<string, mixed>
      */
     private static function databaseConfig(): array
@@ -282,10 +286,6 @@ final class App
         return [
             'driver' => $_ENV['DB_DRIVER'] ?? 'sqlite',
             'database' => $_ENV['DB_DATABASE'] ?? dirname(__DIR__) . '/storage/app.sqlite',
-            'host' => $_ENV['DB_HOST'] ?? 'db',
-            'port' => (int) ($_ENV['DB_PORT'] ?? 0),
-            'username' => $_ENV['DB_USERNAME'] ?? '',
-            'password' => $_ENV['DB_PASSWORD'] ?? '',
         ];
     }
 
@@ -305,10 +305,6 @@ final class App
         $defaults = [
             'DB_DRIVER' => 'sqlite',
             'DB_DATABASE' => dirname(__DIR__) . '/storage/app.sqlite',
-            'DB_HOST' => 'db',
-            'DB_PORT' => '0',
-            'DB_USERNAME' => '',
-            'DB_PASSWORD' => '',
         ];
 
         foreach ($defaults as $key => $value) {
