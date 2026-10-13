@@ -61,7 +61,7 @@ is whether it boots and serves, which takes one command:
 
 ```bash
 composer install
-php -S localhost:8000 -t public public/index.php   # then open http://localhost:8000
+composer serve           # then open http://localhost:8000
 ```
 
 For a real suite against this skeleton, use the workspace's scratch
@@ -87,6 +87,12 @@ A page is a route and nothing else. `App::boot()` discovers everything under
 `src/`, so a class that declares `#[Route]` appears without being registered —
 which is also why a component rendered only by another component needs no
 registration of its own.
+
+A console command is the same bargain: it is one because it exists. Put it in
+`src/Console/`, and `bootstrap/app.php` already discovers it — name it yourself
+with `name()`, and the container supplies whatever the constructor asks for. A
+command belonging to a package rather than to you is declared by that package, not
+by you, through `Console\CommandProvider`.
 
 See [AGENTS.md](https://github.com/iam-adty/empira-dev/blob/main/agents/app.md) for the wiring, the traps, and why there is no seed
 command.
