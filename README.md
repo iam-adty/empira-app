@@ -46,8 +46,11 @@ php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'
 Pass `--host=127.0.0.1` to keep it on loopback.
 
 Worker mode is optional and lives in its own package,
-[empira-frankenphp](https://github.com/iam-adty/empira-frankenphp). This
-application does not install it and does not need to.
+[empira-frankenphp](https://github.com/iam-adty/empira-frankenphp). Request
+profiling is the same shape —
+[empira-debug-tools](https://github.com/iam-adty/empira-debug-tools) — a module
+that registers nothing at all outside a development environment. This
+application installs neither and does not need to.
 
 ## Test it
 
