@@ -59,6 +59,23 @@ abstract class SiteLayout extends Layout
         );
     }
 
+    /**
+     * htmx, served from this application's own `public/`.
+     *
+     * The framework's default is a CDN URL, which is right for a library —
+     * it cannot know where an application keeps its webroot, and assuming the
+     * skeleton would 404 for anyone who did not install from it. A skeleton
+     * *does* know, so it ships the file and points at it.
+     *
+     * `public/htmx.min.js` is committed, so this costs no build step and no
+     * network on page load. `public/htmx.LICENSE` records the version and its
+     * hash.
+     */
+    protected function htmxUrl(): string
+    {
+        return '/htmx.min.js';
+    }
+
     protected function styles(): Element|Raw
     {
         return Raw::of(self::CSS);

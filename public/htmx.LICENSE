@@ -1,0 +1,27 @@
+htmx 2.0.4 — https://htmx.org
+Copyright 2020 Big Sky Software
+
+Distributed under the Zero-Clause BSD licence, which is a public-domain
+dedication: no attribution is required and none is claimed. It is recorded here
+because `htmx.min.js` sits beside this file, and a reader who finds it should
+not have to guess where it came from.
+
+    SPDX-License-Identifier: 0BSD
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+    SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+    IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+Upstream sha256 of `htmx.min.js`:
+
+    e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447
+
+That hash is recorded so an upgrade can be verified rather than assumed. To bump
+the version, replace `htmx.min.js` and re-record the hash here.

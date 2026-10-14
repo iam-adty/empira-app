@@ -62,6 +62,20 @@ profiling is the same shape —
 that registers nothing at all outside a development environment. This
 application installs neither and does not need to.
 
+### htmx is committed, not fetched
+
+`public/htmx.min.js` is htmx 2.0.4, committed here rather than pulled from a CDN
+on every page load. There is no build step and no network dependency at runtime.
+
+The framework's own default is still a CDN URL, because a library cannot know
+where an application keeps its webroot — assuming the skeleton would break anyone
+who did not install from it. `SiteLayout::htmxUrl()` is the override that points
+here.
+
+To change versions, replace `public/htmx.min.js` and update the hash recorded in
+`public/htmx.LICENSE`, which is how an upgrade gets verified rather than assumed.
+htmx is Zero-Clause BSD, so keeping it costs nothing.
+
 ## Test it
 
 You cannot, and that is the design.
