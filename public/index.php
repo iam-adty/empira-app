@@ -22,6 +22,38 @@ declare(strict_types=1);
 
 use App\App;
 
+/**
+ * Hand an existing file in `public/` back to the web server, and only here.
+ *
+ * `empira serve` starts `php -S … -t public public/index.php`, which makes THIS
+ * FILE the router script — and PHP runs a router script at the start of every
+ * single request, not just the ones that miss a file. Falling through to serve
+ * the requested resource is something the router has to ask for explicitly, by
+ * returning false. Without this, a static file in `public/` is answered by the
+ * application, which has no route for it and 404s.
+ *
+ * That is not hypothetical: `public/htmx.min.js` is how this was found.
+ *
+ * Three details that matter:
+ *
+ *   * `return false` works only here, at the top level of the router script. It
+ *     cannot live in a function, and it must come before any output.
+ *   * The query string is stripped, or `/htmx.min.js?v=2` fails is_file() and
+ *     404s — which would look intermittent rather than missing.
+ *   * Under nginx and php-fpm this file is only reached for paths the web
+ *     server has already decided are not static, so the guard is inert there.
+ *
+ * The directory index is deliberately excluded: `public/` answering its own
+ * index would take routing away from the front controller.
+ */
+if (PHP_SAPI === 'cli-server') {
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+
+    if ($path !== null && $path !== '/' && is_file(__DIR__ . $path)) {
+        return false;
+    }
+}
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 App::loadEnvironment(dirname(__DIR__));

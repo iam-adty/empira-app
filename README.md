@@ -76,6 +76,12 @@ To change versions, replace `public/htmx.min.js` and update the hash recorded in
 `public/htmx.LICENSE`, which is how an upgrade gets verified rather than assumed.
 htmx is Zero-Clause BSD, so keeping it costs nothing.
 
+Anything else you drop into `public/` is served too — but only because
+`public/index.php` returns `false` for an existing file when it is running as the
+built-in server's router script. Without that, `php -S` hands every request,
+static ones included, to your application, and it 404s its own assets. That is
+invisible under nginx, which serves `public/` before PHP runs, and total here.
+
 ## Test it
 
 You cannot, and that is the design.
