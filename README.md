@@ -22,7 +22,7 @@ For worked examples, read the packages' own suites: authentication in
 ```bash
 composer install
 cp .env.example .env    # then paste a generated secret into APP_SECRET
-composer serve          # every interface, port 8000
+composer serve          # loopback, port 8000
 ```
 
 `.env` is required, not optional. `APP_SECRET` signs every component URL, and
@@ -44,16 +44,23 @@ That is the framework's console rather than a raw `php -S`:
 `vendor/bin/empira serve --host=0.0.0.0`. It prints what it started and re-runs
 on request.
 
-It binds **every interface**, so the page answers on `localhost:8000` and on this
-machine's address on your network. A development server reachable only from the
-box it runs on is awkward when the box is a VM, so the bind is deliberate.
+It binds **loopback only**, so the page answers on `localhost:8000` and nowhere
+else. That is the default on purpose: `APP_SECRET` signs every component URL, so
+a development server reachable from the network is one where anything that can
+reach the port can mint a signed component URL and have the application fetch any
+component with any props. Nothing logs it and nothing 500s; the forged URL simply
+works. Loopback is where you want it by default; reaching it deliberately is the
+part you have to ask for.
 
-**That means your secret is on the network.** Anything that can reach the port
-can mint a signed component URL and have the application fetch any component with
-any props. Nothing logs it and nothing 500s; the forged URL simply works. Use
-`--host=127.0.0.1` on a network you do not control.
+**To reach it from another machine**, pass the address:
 
-Pass `--host=127.0.0.1` to keep it on loopback.
+```bash
+vendor/bin/empira serve --host=0.0.0.0
+```
+
+That answers on this machine's network address as well as loopback. Use it when
+the box is a VM you reach from elsewhere, and not on a network you do not
+control.
 
 Worker mode is optional and lives in its own package,
 [empira-frankenphp](https://github.com/iam-adty/empira-frankenphp). Request

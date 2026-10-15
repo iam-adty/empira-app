@@ -13,9 +13,10 @@
             "App\\": "src/"
         }
     },
+    "//scripts": "`./vendor/bin/empira`, not `php vendor/bin/empira` and not a bare `vendor/bin/empira` — the file carries a shebang and is executable, so the explicit path is both the shortest and the one that says what it runs. `serve` takes no `--host`, so it binds loopback: `APP_SECRET` signs every component URL, and a server reachable from the network is one where anything that can reach the port can mint a signed component URL and have the application fetch any component with any props. Pass `--host=0.0.0.0` deliberately, when the box is a VM you reach from elsewhere.",
     "scripts": {
-        "migrate": "php vendor/bin/empira migrate",
-        "serve": "vendor/bin/empira serve --host=0.0.0.0"
+        "migrate": "./vendor/bin/empira migrate",
+        "serve": "./vendor/bin/empira serve"
     },
     "config": {
         "sort-packages": true
