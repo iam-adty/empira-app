@@ -927,13 +927,13 @@
             "version": "dev-main",
             "source": {
                 "type": "git",
-                "url": "https://github.com/iam-adty/empira-principle.git",
-                "reference": "4c784c0730696d4b107388de1c1078d4b726c2cc"
+                "url": "git@github.com:iam-adty/empira-principle.git",
+                "reference": "82e508a206296c848473d973f37f752cd4910f60"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/4c784c0730696d4b107388de1c1078d4b726c2cc",
-                "reference": "4c784c0730696d4b107388de1c1078d4b726c2cc",
+                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/82e508a206296c848473d973f37f752cd4910f60",
+                "reference": "82e508a206296c848473d973f37f752cd4910f60",
                 "shasum": ""
             },
             "require": {
@@ -976,9 +976,6 @@
             "scripts": {
                 "test": [
                     "tools/test"
-                ],
-                "test:sqlite": [
-                    "tools/test --exclude-group driver"
                 ]
             },
             "license": [
@@ -992,11 +989,7 @@
                 "hypermedia",
                 "server-driven"
             ],
-            "support": {
-                "source": "https://github.com/iam-adty/empira-principle/tree/main",
-                "issues": "https://github.com/iam-adty/empira-principle/issues"
-            },
-            "time": "2026-10-13T04:42:48+00:00"
+            "time": "2026-10-15T07:42:14+00:00"
         },
         {
             "name": "monolog/monolog",
