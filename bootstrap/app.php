@@ -37,7 +37,15 @@ use App\App;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-App::loadEnvironment(dirname(__DIR__));
+/**
+ * Where this application is — the same name and the same value that
+ * `public/index.php` defines, and it has to be defined again here because the
+ * console never loads that file. Two entry points rather than one with a flag,
+ * for the same reason there are two of those.
+ */
+define('__ROOT_DIR__', dirname(__DIR__));
+
+App::loadEnvironment();
 
 $app = App::bootConsole();
 

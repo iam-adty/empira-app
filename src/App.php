@@ -13,7 +13,6 @@ use Empira\Application\SqliteStorage;
 use Empira\Application\StderrLogger;
 use Empira\Auth\AuthModule;
 use Empira\Auth\LoginPage;
-use Empira\Config\Env;
 use Empira\Security\Csrf;
 use Empira\State\SessionState;
 use Empira\State\StateStore;
@@ -150,30 +149,28 @@ final class App extends Application
     }
 
     /**
-     * Load `.env` into `$_ENV`, before anything reads configuration from it.
+     * Load `.env`, naming the keys this application owns.
      *
-     * The keys this application owns are stripped **before** the file is read, so
-     * a value the shell exported cannot win. That ordering is the whole
-     * interesting part, and getting it backwards makes `.env` silently override
-     * the deployment it was meant to be overridden by — or lets
-     * `export APP_ENV=production` in one terminal change what a development
-     * machine serves, leaving two answers to "what configuration is in effect".
+     * One line over the framework's method, and the reason it is here: the keys
+     * are this application's. The framework cannot know that `LOG_LEVEL` is
+     * configuration and `NOT_A_REAL_KEY` is not, and passing a list rather than
+     * reading the file's keys is what keeps that true — a plain merge would strip
+     * nothing and leave an exported variable standing.
      *
-     * The cost is real: injected environment variables stop reaching the
-     * application, because a value that never arrives in `$_ENV` cannot be
-     * consulted. A deployment supplies a real `.env` file instead, which means
-     * the secret is on disk and belongs in a file mode its owner cannot read.
+     * Both entry points call this with no arguments; where the application is
+     * comes from the `__ROOT_DIR__` each of them defines. The mechanism — the
+     * ordering, the merge, the refusal to guess — is
+     * {@see Application::loadEnvironment()}.
      *
-     * This one stays here because the *keys* are this application's. The
-     * framework cannot know that `LOG_LEVEL` is configuration and
-     * `NOT_A_REAL_KEY` is not.
+     * The signature is the parent's rather than a narrower one, because PHP will
+     * not let a subclass reduce what it accepts. `$keys` is therefore *added* to
+     * this application's own, which is the only useful direction anyway: a
+     * caller naming an extra key wants it stripped alongside the rest.
+     *
+     * @param list<string> $keys further keys to strip before reading the file
      */
-    public static function loadEnvironment(string $basePath): void
+    public static function loadEnvironment(array $keys = [], ?string $basePath = null): void
     {
-        foreach (self::CONFIG_KEYS as $key) {
-            unset($_ENV[$key]);
-        }
-
-        $_ENV = array_merge($_ENV, Env::fromFile($basePath . '/.env'));
+        parent::loadEnvironment([...self::CONFIG_KEYS, ...$keys], $basePath);
     }
 }
