@@ -56,27 +56,9 @@ if (PHP_SAPI === 'cli-server') {
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-/**
- * Where this application is, for everything that has to reach the filesystem:
- * `.env`, `storage/`, `bootstrap/`.
- *
- * Defined here because this is the entry point, and an entry point is the only
- * party that knows. The framework will not fall back to `getcwd()` — the working
- * directory is whatever the process manager or the operator started the process
- * in, and reading configuration from there is a configuration file the
- * application did not write.
- *
- * **`bootstrap/app.php` defines it too, and that is not duplication.** The
- * console never loads this file: `vendor/bin/empira` requires
- * `bootstrap/app.php` and boots from that. Two entry points, two constants,
- * same name — which is what makes `Application::basePath()` answer the same in
- * `empira migrate` as it does in a request.
- */
-// Short-circuited because this file can be reached twice in one process — a
-// worker that includes the front controller after a test already did — and an
-// unconditional `define()` warns, and is a fatal error in PHP 9.
-defined('EMPIRA_APP_ROOT') || define('EMPIRA_APP_ROOT', dirname(__DIR__));
-
+// Where this application is comes from `App` itself, which reads it off its own
+// file — so nothing here has to know, and `EMPIRA_APP_ROOT` stays available for
+// a deployment laid out differently from its source tree.
 App::loadEnvironment();
 
 // `send()` emits the response and ends the script, which is what a process with

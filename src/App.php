@@ -157,9 +157,10 @@ final class App extends Application
      * reading the file's keys is what keeps that true — a plain merge would strip
      * nothing and leave an exported variable standing.
      *
-     * Both entry points call this with no arguments; where the application is
-     * comes from the `EMPIRA_APP_ROOT` each of them defines. The mechanism — the
-     * ordering, the merge, the refusal to guess — is
+     * Both entry points call this with no arguments, because this class already
+     * knows where it is — `static::basePath()` reads it off this file, and
+     * `EMPIRA_APP_ROOT` overrides that for a deployment laid out differently.
+     * The mechanism — the ordering, the merge, the refusal to guess — is
      * {@see Application::loadEnvironment()}.
      *
      * The signature is the parent's rather than a narrower one, because PHP will
@@ -171,6 +172,6 @@ final class App extends Application
      */
     public static function loadEnvironment(array $keys = [], ?string $basePath = null): void
     {
-        parent::loadEnvironment([...self::CONFIG_KEYS, ...$keys], $basePath);
+        parent::loadEnvironment([...self::CONFIG_KEYS, ...$keys], $basePath ?? static::basePath());
     }
 }
