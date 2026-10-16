@@ -3,9 +3,29 @@
 A bare skeleton for [Empira](https://github.com/iam-adty/empira-principle): the smallest application that boots
 and serves, and the answer to "how do I wire this up?".
 
-It is three files of source — [`src/App.php`](src/App.php) does the wiring,
+It is a small skeleton — [`src/App.php`](src/App.php) declares what the
+application is, [`src/App/`](src/App/) holds the three pieces you can replace,
 [`src/Layouts/SiteLayout.php`](src/Layouts/SiteLayout.php) is the document, and
-[`src/Pages/HomeLayout.php`](src/Pages/HomeLayout.php) is the one page.
+[`src/Pages/`](src/Pages/) holds the pages.
+
+`App` is two attributes and a constructor:
+
+```php
+#[Modules([AuthModule::class], login: LoginLayout::class)]
+#[Overrides(secret: EnvSecret::class, logger: StderrLogger::class, storage: SqliteStorage::class)]
+final class App extends Application
+{
+    // …
+}
+```
+
+`#[Modules]` names module *classes*; the container builds them, so a module can
+build itself from the session and entity manager this application has already
+configured. `login:` is the page `GET /login` renders — name your own, or drop
+the entry and the module's plain one is used. `#[Overrides]` names the secret,
+the logger and the database; each is a one-method class in
+[`src/App/`](src/App/), and replacing one is one word in the attribute rather
+than an edit to a constructor.
 
 It used to be a demo of sign-in, registration, a dashboard, rate limiting and a
 nav bar. That is gone, and the reason is the second half of "how do I wire this
@@ -120,13 +140,20 @@ final class TodosLayout extends SiteLayout { … }
 #[Route('/admin', middleware: [RequireAuth::class])]
 final class AdminLayout extends SiteLayout { … }
 
-$app->module(new SomeOtherModule());
+// A module is a class named in #[Modules] — not a line in a constructor.
+#[Modules([AuthModule::class, SomeOtherModule::class])]
 ```
 
 A page is a route and nothing else. `App::boot()` discovers everything under
 `src/`, so a class that declares `#[Route]` appears without being registered —
 which is also why a component rendered only by another component needs no
 registration of its own.
+
+**Dropping authentication is one line.** Remove the auth module's name from
+`#[Modules]` and the module, its `/login` and `/logout` routes and its `users`
+table all stop existing. The `orm()` line in `App::__construct()` still maps the
+module's entity directory, and it is worth dropping alongside — neither is useful
+alone, since a module with no mapped entity cannot read a user.
 
 A console command is the same bargain: it is one because it exists. Put it in
 `src/Console/`, and `bootstrap/app.php` already discovers it — name it yourself
