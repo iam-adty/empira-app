@@ -97,6 +97,22 @@ final class App extends Application
         $this->log(self::override($overrides->logger, ProvidesLogger::class)->logger());
 
         $this->discover(__DIR__, __NAMESPACE__);
+
+        // A page rather than a bare status line, for every error the framework
+        // raises — a missing route, a refused action, a bad token. The view sets
+        // the body and nothing else: the framework keeps the status and the
+        // headers, so a 405 still carries its `Allow` and a 429 its
+        // `Retry-After`.
+        //
+        // Dropping this is not a simplification. Without it the body is the
+        // exception's message alone — "Not Found" — which is a fact about the
+        // failure rather than a page somebody can be shown.
+        $this->onHttpError(static fn (int $status, string $message): string => sprintf(
+            '<!doctype html><meta charset="utf-8"><title>%d</title><h1>%d</h1><p>%s</p>',
+            $status,
+            $status,
+            htmlspecialchars($message, ENT_QUOTES),
+        ));
     }
 
     /**
