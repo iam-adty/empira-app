@@ -4,14 +4,14 @@ A bare skeleton for [Empira](https://github.com/iam-adty/empira-principle): the 
 and serves, and the answer to "how do I wire this up?".
 
 It is a small skeleton — [`src/App.php`](src/App.php) declares what the
-application is, [`src/App/`](src/App/) holds the three pieces you can replace,
-[`src/Layouts/SiteLayout.php`](src/Layouts/SiteLayout.php) is the document, and
-[`src/Pages/`](src/Pages/) holds the pages.
+application is, [`src/Layouts/SiteLayout.php`](src/Layouts/SiteLayout.php) is the
+document, and [`src/Pages/`](src/Pages/) holds the pages.
 
-`App` is two attributes and a constructor:
+`App` is three attributes and a constructor:
 
 ```php
-#[Modules([AuthModule::class], login: LoginLayout::class)]
+#[Modules(AuthModule::class)]
+#[LoginPage(LoginLayout::class)]
 #[Overrides(secret: EnvSecret::class, logger: StderrLogger::class, storage: SqliteStorage::class)]
 final class App extends Application
 {
@@ -21,11 +21,10 @@ final class App extends Application
 
 `#[Modules]` names module *classes*; the container builds them, so a module can
 build itself from the session and entity manager this application has already
-configured. `login:` is the page `GET /login` renders — name your own, or drop
-the entry and the module's plain one is used. `#[Overrides]` names the secret,
-the logger and the database; each is a one-method class in
-[`src/App/`](src/App/), and replacing one is one word in the attribute rather
-than an edit to a constructor.
+configured. `#[LoginPage]` names the page `GET /login` renders — drop it and the
+module falls back to the plain page it ships. `#[Overrides]` names the secret, the
+logger and the database; each is a one-method class in `Empira\Application\`, and
+replacing one is one word in the attribute rather than an edit to a constructor.
 
 It used to be a demo of sign-in, registration, a dashboard, rate limiting and a
 nav bar. That is gone, and the reason is the second half of "how do I wire this

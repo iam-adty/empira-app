@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace App;
 
-use App\App\EnvSecret;
-use App\App\Modules;
-use App\App\Overrides;
-use App\App\ProvidesLogger;
-use App\App\ProvidesSecret;
-use App\App\ProvidesStorage;
-use App\App\SqliteStorage;
-use App\App\StderrLogger;
 use App\Pages\LoginLayout;
 use Empira\Application;
+use Empira\Application\EnvSecret;
+use Empira\Application\LoginPage;
+use Empira\Application\Modules;
+use Empira\Application\Overrides;
+use Empira\Application\ProvidesLogger;
+use Empira\Application\ProvidesSecret;
+use Empira\Application\ProvidesStorage;
+use Empira\Application\SqliteStorage;
+use Empira\Application\StderrLogger;
 use Empira\Auth\AuthModule;
 use Empira\Config\Env;
 use Empira\ConfigurableModule;
@@ -29,17 +30,18 @@ use ReflectionClass;
  * `Application` already defaults everything that has a defensible default, so
  * this class supplies only the decisions that are *this application's*: a
  * secret, a logger, a database, a module list and a page — and it says all five
- * in the two attributes above, where they can be read without reading a method.
+ * in the attributes above, where they can be read without reading a method.
  *
- * Nothing here is a feature. Authentication is a module, named in
- * `#[Modules]`; delete it from that attribute and this file, the `users` table
- * and the login page all stop existing, which is the only honest way for a
- * development tool to be optional.
+ * Nothing here is a feature. Authentication is a module, named in `#[Modules]`;
+ * delete it from that attribute and this file, the `users` table and the login
+ * page all stop existing, which is the only honest way for a development tool to
+ * be optional.
  *
  * A page is a route and nothing else: `#[Route]` on a layout class, discovered
  * by scanning `src/`.
  */
-#[Modules([AuthModule::class], login: LoginLayout::class)]
+#[Modules(AuthModule::class)]
+#[LoginPage(LoginLayout::class)]
 #[Overrides(secret: EnvSecret::class, logger: StderrLogger::class, storage: SqliteStorage::class)]
 final class App extends Application
 {
@@ -75,7 +77,9 @@ final class App extends Application
         $overrides = self::attribute(Overrides::class);
         $modules = self::attribute(Modules::class);
 
-        self::publishDatabaseDefaults(self::override($overrides->storage, ProvidesStorage::class)->path());
+        self::publishDatabaseDefaults(self::resolveStorage(
+            self::override($overrides->storage, ProvidesStorage::class)->path(),
+        ));
 
         parent::__construct(
             secret: self::override($overrides->secret, ProvidesSecret::class)->secret(),
@@ -100,7 +104,7 @@ final class App extends Application
         // because the signature invites it.
         $this->orm(null, [__DIR__, AuthModule::entityPath()]);
 
-        $this->module(...$this->resolveModules($modules));
+        $this->module(...$this->resolveModules($modules->modules));
 
         $this->log(self::override($overrides->logger, ProvidesLogger::class)->logger());
 
@@ -168,9 +172,16 @@ final class App extends Application
      *
      * @return list<\Empira\Module>
      */
-    private function resolveModules(Modules $modules): array
+    private function resolveModules(array $classes): array
     {
-        $options = ['login' => $modules->login];
+        // `#[LoginPage]` is optional, so this cannot be read off `$modules` the
+        // way `login:` used to be — an absent attribute has to mean "no opinion",
+        // not an error. A module that wants one and was not given it falls back
+        // to whatever it ships, which is the right answer for an application
+        // that simply has not drawn a login page yet.
+        $login = self::attribute(LoginPage::class, required: false);
+
+        $options = $login instanceof LoginPage ? ['login' => $login->page] : [];
 
         return array_map(function (string $class) use ($options): \Empira\Module {
             // `container()`, not `$this->container` — the framework's field is
@@ -184,7 +195,25 @@ final class App extends Application
             }
 
             return $module;
-        }, $modules->modules);
+        }, $classes);
+    }
+
+    /**
+     * Where the database actually is.
+     *
+     * A framework default cannot know this. `SqliteStorage` ships inside
+     * `principle`, so `dirname(__DIR__)` from there resolves to the framework's
+     * own directory and a skeleton's database would land in `vendor/` — green in
+     * a test run, gone with the next install. So it answers a path relative to
+     * the application root, and this method is the application supplying that
+     * root.
+     *
+     * Absolute paths pass through untouched, so an application supplying one gets
+     * exactly what it asked for rather than this method's opinion about it.
+     */
+    private static function resolveStorage(string $path): string
+    {
+        return str_starts_with($path, '/') ? $path : dirname(__DIR__) . '/' . $path;
     }
 
     /**
@@ -229,15 +258,25 @@ final class App extends Application
     }
 
     /**
-     * This class's own attribute of the given type.
+     * This class's own attribute of the given type, or null when it is optional
+     * and absent.
      *
      * `static::class` rather than `self::class`, so a subclass reads its own.
+     *
+     * `required: false` is for attributes an application may legitimately have
+     * no opinion about. `#[Modules]` and `#[Overrides]` are not optional — an
+     * application missing one has nothing to build itself from, and saying so by
+     * name beats booting with a default nobody chose.
      */
-    private static function attribute(string $name): object
+    private static function attribute(string $name, bool $required = true): ?object
     {
         $found = (new ReflectionClass(static::class))->getAttributes($name, ReflectionAttribute::IS_INSTANCEOF);
 
         if ($found === []) {
+            if (! $required) {
+                return null;
+            }
+
             throw new \LogicException(sprintf(
                 '%s must declare #[%s] — an application with neither has nothing to build itself from.',
                 static::class,

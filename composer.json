@@ -5,8 +5,7 @@
     "license": "MIT",
     "require": {
         "iam-adty/empira-auth": "dev-main",
-        "iam-adty/empira-principle": "dev-main",
-        "monolog/monolog": "^3.12"
+        "iam-adty/empira-principle": "dev-main"
     },
     "autoload": {
         "psr-4": {

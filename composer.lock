@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "137794bcc381cf22c2d6cfc80737ed54",
+    "content-hash": "39bf55d073acf10adcdbfae8308e3db7",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -928,18 +928,19 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/iam-adty/empira-principle.git",
-                "reference": "7e40adc740687383108e8e6adbf58c8dad144144"
+                "reference": "4f6695c7a9dc6ba53247f4a2d26d10357ebffd2e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/7e40adc740687383108e8e6adbf58c8dad144144",
-                "reference": "7e40adc740687383108e8e6adbf58c8dad144144",
+                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/4f6695c7a9dc6ba53247f4a2d26d10357ebffd2e",
+                "reference": "4f6695c7a9dc6ba53247f4a2d26d10357ebffd2e",
                 "shasum": ""
             },
             "require": {
                 "doctrine/dbal": "^4.3",
                 "doctrine/migrations": "^3.9",
                 "doctrine/orm": "^3.5",
+                "monolog/monolog": "^3.12",
                 "nyholm/psr7": "^1.8",
                 "php": "^8.4",
                 "psr/container": "^2.0",
@@ -999,7 +1000,7 @@
                 "source": "https://github.com/iam-adty/empira-principle/tree/main",
                 "issues": "https://github.com/iam-adty/empira-principle/issues"
             },
-            "time": "2026-10-16T06:04:34+00:00"
+            "time": "2026-10-16T09:20:45+00:00"
         },
         {
             "name": "monolog/monolog",
