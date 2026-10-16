@@ -90,7 +90,15 @@ final class App extends Application
         // The module's entity path is listed here rather than added by the
         // module: mapping an application's schema is a decision about that
         // application, and only it knows what else it is mapping.
-        $this->orm([__DIR__, AuthModule::entityPath()]);
+        // `null` first, explicitly: `orm()` takes the database config as its
+        // first argument and the entity paths second, so a call that looks
+        // right and omits the null passes the paths as the configuration.
+        // Nothing errors — DatabaseConfig finds no `driver` and no `database`,
+        // supplies its own defaults, and the application opens `:memory:` while
+        // every query against it answers. Passing the paths first is not a typo
+        // this file used to be able to make by accident; the comment is here
+        // because the signature invites it.
+        $this->orm(null, [__DIR__, AuthModule::entityPath()]);
 
         $this->module(...$this->resolveModules($modules));
 
