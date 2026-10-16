@@ -43,7 +43,10 @@ require __DIR__ . '/../vendor/autoload.php';
  * console never loads that file. Two entry points rather than one with a flag,
  * for the same reason there are two of those.
  */
-define('__ROOT_DIR__', dirname(__DIR__));
+// Short-circuited for the same reason as the front controller's, and because
+// the console genuinely can require this file twice: `Bootstrap::boot()` does,
+// and so does a test that boots it by hand.
+defined('__ROOT_DIR__') || define('__ROOT_DIR__', dirname(__DIR__));
 
 App::loadEnvironment();
 
