@@ -863,7 +863,7 @@
             "version": "dev-main",
             "source": {
                 "type": "git",
-                "url": "git@github.com:iam-adty/empira-auth.git",
+                "url": "https://github.com/iam-adty/empira-auth.git",
                 "reference": "aeeb9c5444bba38122bc649d5fcaea9ed7609c69"
             },
             "dist": {
@@ -916,6 +916,10 @@
                 "module",
                 "session"
             ],
+            "support": {
+                "source": "https://github.com/iam-adty/empira-auth/tree/main",
+                "issues": "https://github.com/iam-adty/empira-auth/issues"
+            },
             "time": "2026-10-16T05:44:56+00:00"
         },
         {
@@ -923,13 +927,13 @@
             "version": "dev-main",
             "source": {
                 "type": "git",
-                "url": "git@github.com:iam-adty/empira-principle.git",
-                "reference": "303cf884d0594efacf369d04eb6e2de264a72adc"
+                "url": "https://github.com/iam-adty/empira-principle.git",
+                "reference": "7e40adc740687383108e8e6adbf58c8dad144144"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/303cf884d0594efacf369d04eb6e2de264a72adc",
-                "reference": "303cf884d0594efacf369d04eb6e2de264a72adc",
+                "url": "https://api.github.com/repos/iam-adty/empira-principle/zipball/7e40adc740687383108e8e6adbf58c8dad144144",
+                "reference": "7e40adc740687383108e8e6adbf58c8dad144144",
                 "shasum": ""
             },
             "require": {
@@ -991,7 +995,11 @@
                 "hypermedia",
                 "server-driven"
             ],
-            "time": "2026-10-16T05:50:32+00:00"
+            "support": {
+                "source": "https://github.com/iam-adty/empira-principle/tree/main",
+                "issues": "https://github.com/iam-adty/empira-principle/issues"
+            },
+            "time": "2026-10-16T06:04:34+00:00"
         },
         {
             "name": "monolog/monolog",
