@@ -21,10 +21,14 @@ final class App extends Application
 
 `#[Modules]` names module *classes*; the container builds them, so a module can
 build itself from the session and entity manager this application has already
-configured. `#[LoginPage]` names the page `GET /login` renders — drop it and the
-module falls back to the plain page it ships. `#[Overrides]` names the secret, the
-logger and the database; each is a one-method class in `Empira\Application\`, and
-replacing one is one word in the attribute rather than an edit to a constructor.
+configured. `#[LoginPage]` — which lives in the auth package, not the framework
+— names the page `GET /login` renders; drop it and the module falls back to the
+plain page it ships. `#[Overrides]` names the secret, the logger and the
+database; each is a one-method class in `Empira\Application\`, and replacing one
+is one word in the attribute rather than an edit to a constructor.
+
+Anything implementing `Empira\ModuleOption` becomes an attribute the framework
+collects on its own, so adding an option to a module needs no change here.
 
 It used to be a demo of sign-in, registration, a dashboard, rate limiting and a
 nav bar. That is gone, and the reason is the second half of "how do I wire this

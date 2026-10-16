@@ -7,22 +7,16 @@ namespace App;
 use App\Pages\LoginLayout;
 use Empira\Application;
 use Empira\Application\EnvSecret;
-use Empira\Application\LoginPage;
 use Empira\Application\Modules;
 use Empira\Application\Overrides;
-use Empira\Application\ProvidesLogger;
-use Empira\Application\ProvidesSecret;
-use Empira\Application\ProvidesStorage;
 use Empira\Application\SqliteStorage;
 use Empira\Application\StderrLogger;
 use Empira\Auth\AuthModule;
+use Empira\Auth\LoginPage;
 use Empira\Config\Env;
-use Empira\ConfigurableModule;
 use Empira\Security\Csrf;
 use Empira\State\SessionState;
 use Empira\State\StateStore;
-use ReflectionAttribute;
-use ReflectionClass;
 
 /**
  * The application.
@@ -39,12 +33,40 @@ use ReflectionClass;
  *
  * A page is a route and nothing else: `#[Route]` on a layout class, discovered
  * by scanning `src/`.
+ *
+ * ## What is *not* here, and why
+ *
+ * The machinery that reads these attributes — `attribute()`, `override()`,
+ * `basePath()`, `installModules()` — lives on `Application`. It was written
+ * twice, identically, in this file and in the scratch application's own `App`,
+ * and drifted twice: a missing `loadEnvironment()`, and `orm()` handed entity
+ * paths in its configuration argument. Nothing here is application-specific,
+ * so nothing here is duplicated.
  */
 #[Modules(AuthModule::class)]
 #[LoginPage(LoginLayout::class)]
 #[Overrides(secret: EnvSecret::class, logger: StderrLogger::class, storage: SqliteStorage::class)]
 final class App extends Application
 {
+    /**
+     * The configuration keys this application owns, read from `.env` and from
+     * nothing else.
+     *
+     * A list rather than "whatever is in the file" so that a key the file does
+     * not mention falls through to this application's own default instead of
+     * being inherited from outside.
+     *
+     * @var list<string>
+     */
+    private const CONFIG_KEYS = [
+        'APP_ENV',
+        'APP_SECRET',
+        'LOG_STREAM',
+        'LOG_LEVEL',
+        'DB_DRIVER',
+        'DB_DATABASE',
+    ];
+
     /**
      * The web entry point, and the only one that enables CSRF.
      *
@@ -75,14 +97,15 @@ final class App extends Application
     public function __construct(?StateStore $state = null, ?Csrf $csrf = null)
     {
         $overrides = self::attribute(Overrides::class);
-        $modules = self::attribute(Modules::class);
 
-        self::publishDatabaseDefaults(self::resolveStorage(
-            self::override($overrides->storage, ProvidesStorage::class)->path(),
+        // The framework's default is a relative path, because it cannot know
+        // where this application is. `basePath()` is it finding out.
+        self::publishDatabaseDefaults(self::basePath(
+            self::override($overrides->storage, \Empira\Application\ProvidesStorage::class)->path(),
         ));
 
         parent::__construct(
-            secret: self::override($overrides->secret, ProvidesSecret::class)->secret(),
+            secret: self::override($overrides->secret, \Empira\Application\ProvidesSecret::class)->secret(),
             state: $state ?? new SessionState(),
             csrf: $csrf,
         );
@@ -99,14 +122,13 @@ final class App extends Application
         // right and omits the null passes the paths as the configuration.
         // Nothing errors — DatabaseConfig finds no `driver` and no `database`,
         // supplies its own defaults, and the application opens `:memory:` while
-        // every query against it answers. Passing the paths first is not a typo
-        // this file used to be able to make by accident; the comment is here
-        // because the signature invites it.
+        // every query against it answers. The comment is here because the
+        // signature invites that mistake.
         $this->orm(null, [__DIR__, AuthModule::entityPath()]);
 
-        $this->module(...$this->resolveModules($modules->modules));
+        $this->installModules(self::attribute(Modules::class)->modules);
 
-        $this->log(self::override($overrides->logger, ProvidesLogger::class)->logger());
+        $this->log(self::override($overrides->logger, \Empira\Application\ProvidesLogger::class)->logger());
 
         $this->discover(__DIR__, __NAMESPACE__);
 
@@ -142,17 +164,10 @@ final class App extends Application
      * consulted. A deployment supplies a real `.env` file instead, which means
      * the secret is on disk and belongs in a file mode its owner cannot read.
      *
-     * @var list<string>
+     * This one stays here because the *keys* are this application's. The
+     * framework cannot know that `LOG_LEVEL` is configuration and
+     * `NOT_A_REAL_KEY` is not.
      */
-    private const CONFIG_KEYS = [
-        'APP_ENV',
-        'APP_SECRET',
-        'LOG_STREAM',
-        'LOG_LEVEL',
-        'DB_DRIVER',
-        'DB_DATABASE',
-    ];
-
     public static function loadEnvironment(string $basePath): void
     {
         foreach (self::CONFIG_KEYS as $key) {
@@ -160,130 +175,5 @@ final class App extends Application
         }
 
         $_ENV = array_merge($_ENV, Env::fromFile($basePath . '/.env'));
-    }
-
-    /**
-     * The modules named in the attribute, resolved and configured.
-     *
-     * Resolved through the container so a module can build itself from what the
-     * framework has already bound — `AuthModule` is the case that matters, since
-     * it needs this application's session and entity manager to build the guard
-     * that makes signing in work at all.
-     *
-     * @return list<\Empira\Module>
-     */
-    private function resolveModules(array $classes): array
-    {
-        // `#[LoginPage]` is optional, so this cannot be read off `$modules` the
-        // way `login:` used to be — an absent attribute has to mean "no opinion",
-        // not an error. A module that wants one and was not given it falls back
-        // to whatever it ships, which is the right answer for an application
-        // that simply has not drawn a login page yet.
-        $login = self::attribute(LoginPage::class, required: false);
-
-        $options = $login instanceof LoginPage ? ['login' => $login->page] : [];
-
-        return array_map(function (string $class) use ($options): \Empira\Module {
-            // `container()`, not `$this->container` — the framework's field is
-            // private, so a subclass sees a null one that looks like it works.
-            $module = $this->container()->get($class);
-
-            // A module that takes options says so; one that does not simply has
-            // none, and neither this file nor the framework has to know which.
-            if ($module instanceof ConfigurableModule) {
-                $module->configure($options);
-            }
-
-            return $module;
-        }, $classes);
-    }
-
-    /**
-     * Where the database actually is.
-     *
-     * A framework default cannot know this. `SqliteStorage` ships inside
-     * `principle`, so `dirname(__DIR__)` from there resolves to the framework's
-     * own directory and a skeleton's database would land in `vendor/` — green in
-     * a test run, gone with the next install. So it answers a path relative to
-     * the application root, and this method is the application supplying that
-     * root.
-     *
-     * Absolute paths pass through untouched, so an application supplying one gets
-     * exactly what it asked for rather than this method's opinion about it.
-     */
-    private static function resolveStorage(string $path): string
-    {
-        return str_starts_with($path, '/') ? $path : dirname(__DIR__) . '/' . $path;
-    }
-
-    /**
-     * Write this application's database default where both readers will find it.
-     *
-     * The framework's own configuration defaults to `:memory:`. Left alone, a
-     * migration against that is a database which vanishes on exit, followed by an
-     * application querying a real one with no tables in it.
-     */
-    private static function publishDatabaseDefaults(string $path): void
-    {
-        foreach (['DB_DRIVER' => 'sqlite', 'DB_DATABASE' => $path] as $key => $value) {
-            if (! isset($_ENV[$key]) || $_ENV[$key] === '') {
-                $_ENV[$key] = $value;
-            }
-        }
-    }
-
-    /**
-     * One named override, or a refusal saying exactly what is wrong.
-     *
-     * A class name in an attribute is a string until something checks it, so this
-     * is where the check happens — before the application has built anything, so
-     * a typo is a boot that stops with a message rather than a request that does.
-     *
-     * @template T of object
-     * @param class-string<T> $class
-     * @param class-string $contract
-     * @return T
-     */
-    private static function override(string $class, string $contract): object
-    {
-        if (! is_a($class, $contract, true)) {
-            throw new \LogicException(sprintf(
-                '#[Overrides] named %s, which does not implement %s.',
-                class_exists($class) ? $class : sprintf('%s (no such class)', $class),
-                $contract,
-            ));
-        }
-
-        return new $class();
-    }
-
-    /**
-     * This class's own attribute of the given type, or null when it is optional
-     * and absent.
-     *
-     * `static::class` rather than `self::class`, so a subclass reads its own.
-     *
-     * `required: false` is for attributes an application may legitimately have
-     * no opinion about. `#[Modules]` and `#[Overrides]` are not optional — an
-     * application missing one has nothing to build itself from, and saying so by
-     * name beats booting with a default nobody chose.
-     */
-    private static function attribute(string $name, bool $required = true): ?object
-    {
-        $found = (new ReflectionClass(static::class))->getAttributes($name, ReflectionAttribute::IS_INSTANCEOF);
-
-        if ($found === []) {
-            if (! $required) {
-                return null;
-            }
-
-            throw new \LogicException(sprintf(
-                '%s must declare #[%s] — an application with neither has nothing to build itself from.',
-                static::class,
-                $name,
-            ));
-        }
-
-        return $found[0]->newInstance();
     }
 }
