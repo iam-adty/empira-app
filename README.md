@@ -5,7 +5,9 @@ and serves, and the answer to "how do I wire this up?".
 
 It is a small skeleton — [`src/App.php`](src/App.php) declares what the
 application is, [`src/Layouts/SiteLayout.php`](src/Layouts/SiteLayout.php) is the
-document, and [`src/Pages/`](src/Pages/) holds the pages.
+document, [`src/Pages/`](src/Pages/) holds the pages, and
+[`src/Components/Counter.php`](src/Components/Counter.php) is the one component
+there is.
 
 `App` is three attributes and a constructor:
 

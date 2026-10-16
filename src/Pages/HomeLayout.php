@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Pages;
 
+use App\Components\Counter;
 use App\Layouts\SiteLayout;
 use Empira\Attributes\Route;
 use Empira\Element;
@@ -42,6 +43,11 @@ final class HomeLayout extends SiteLayout
             'main' => fn(Region $region): mixed => $region->element('div')->append(
                 $this->hx->p()->text('This page is a route declared with #[Route], drawn by a Layout, ' .
                     'and served by a framework that never asked you to hand-write an hx-* attribute.'),
+                // The one component, and the reason it needs no registration:
+                // `App` declares `App\` as component scope, so anything under
+                // `src/Components/` can be named by a token — including one only
+                // ever nested, which used to 404 when somebody pressed its button.
+                $region->component(Counter::class),
                 $this->hx->p()->text('Add a component, a page, or a module under src/. It appears by existing.'),
             ),
         ];
