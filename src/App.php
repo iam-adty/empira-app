@@ -158,7 +158,7 @@ final class App extends Application
      * nothing and leave an exported variable standing.
      *
      * Both entry points call this with no arguments; where the application is
-     * comes from the `__ROOT_DIR__` each of them defines. The mechanism — the
+     * comes from the `EMPIRA_APP_ROOT` each of them defines. The mechanism — the
      * ordering, the merge, the refusal to guess — is
      * {@see Application::loadEnvironment()}.
      *

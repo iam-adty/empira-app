@@ -75,7 +75,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 // Short-circuited because this file can be reached twice in one process — a
 // worker that includes the front controller after a test already did — and an
 // unconditional `define()` warns, and is a fatal error in PHP 9.
-defined('__ROOT_DIR__') || define('__ROOT_DIR__', dirname(__DIR__));
+defined('EMPIRA_APP_ROOT') || define('EMPIRA_APP_ROOT', dirname(__DIR__));
 
 App::loadEnvironment();
 

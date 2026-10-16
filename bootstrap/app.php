@@ -46,7 +46,7 @@ require __DIR__ . '/../vendor/autoload.php';
 // Short-circuited for the same reason as the front controller's, and because
 // the console genuinely can require this file twice: `Bootstrap::boot()` does,
 // and so does a test that boots it by hand.
-defined('__ROOT_DIR__') || define('__ROOT_DIR__', dirname(__DIR__));
+defined('EMPIRA_APP_ROOT') || define('EMPIRA_APP_ROOT', dirname(__DIR__));
 
 App::loadEnvironment();
 
